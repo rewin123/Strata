@@ -2522,7 +2522,9 @@ bool il_arch_ok() {
     if (cudaGetDevice(&dev) != cudaSuccess || dev < 0 || dev >= 16) return false;
     if (ok[dev] == 0) {
         int major = 0;
-        ok[dev] = (cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, dev) == cudaSuccess && major >= 8) ? 1 : -1;
+        static const bool force = [] { const char* e = std::getenv("STRATA_MMVQ_IL_ARCH"); return e && e[0] == '1'; }();
+        ok[dev] = (cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, dev) == cudaSuccess &&
+                   (major >= 8 || force)) ? 1 : -1;   // STRATA_MMVQ_IL_ARCH=1: any card (measuring)
     }
     return ok[dev] > 0;
 }
