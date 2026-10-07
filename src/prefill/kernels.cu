@@ -1259,6 +1259,16 @@ __global__ void swiglu_il_f32_kernel(const float* __restrict__ gu, float* __rest
     const float g = gu[r * 1280 + 2 * k], u = gu[r * 1280 + 2 * k + 1];
     h[i] = g / (1.0f + __expf(-g)) * u;
 }
+// STRATA_PF_WMMA: SwiGLU of MMQ's gate/up rows (gate 0..n_ff, up n_ff..2 n_ff, or interleaved) to the FP16 down input
+__global__ void swiglu_split_f16_kernel(const float* __restrict__ gu, uint16_t* __restrict__ h16, int64_t rows, int n_ff,
+                                        bool interleaved) {
+    const int64_t i = (int64_t) blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= rows * n_ff) return;
+    const int64_t r = i / n_ff, k = i % n_ff;
+    const float* row = gu + r * 2 * n_ff;
+    const float g = interleaved ? row[2 * k] : row[k], u = interleaved ? row[2 * k + 1] : row[n_ff + k];
+    h16[i] = hf_sat(g / (1.0f + __expf(-g)) * u);
+}
 __global__ void scale_rows_inv_kernel(float* __restrict__ y, const float* __restrict__ inv, int64_t n, int64_t cols) {
     const int64_t i = (int64_t) blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n * cols) return;
@@ -1740,6 +1750,11 @@ void swiglu_il_f32(const float* gu, float* h, int64_t n, void* stream) {
     if (n <= 0) return;
     swiglu_il_f32_kernel<<<blocks_for(n * 640), 256, 0, (cudaStream_t) stream>>>(gu, h, n);
     check("swiglu_il_f32");
+}
+void swiglu_split_f16(const float* gu, uint16_t* h16, int64_t rows, int n_ff, bool interleaved, void* stream) {
+    if (rows <= 0) return;
+    swiglu_split_f16_kernel<<<blocks_for(rows * n_ff), 256, 0, (cudaStream_t) stream>>>(gu, h16, rows, n_ff, interleaved);
+    check("swiglu_split_f16");
 }
 void scale_rows_inv(float* y, const float* inv, int64_t n, int64_t cols, void* stream) {
     if (n <= 0) return;

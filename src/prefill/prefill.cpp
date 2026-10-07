@@ -862,9 +862,18 @@ const MmqPlan& mmq_plan() {
     }();
     return plan;
 }
+// STRATA_PF_WMMA=1: the MMQ layers' experts on FP16 tensor-core tiles (gemm_iq_f16_grouped), CUDA only
+bool pf_wmma() {
+#if defined(__HIPCC__)
+    return false;
+#else
+    static const bool on = [] { const char* e = std::getenv("STRATA_PF_WMMA"); return e != nullptr && e[0] == '1'; }();
+    return on;
+#endif
+}
 // the FP16 path's buffers (Xs, Hh) for chunks of up to T tokens: the fallback's, or Volta's big chunks
 bool fp16_bufs(const MmqPlan& mp, int64_t T) {
-    return mp.fallback || (volta_fp16_min_t() > 0 && T >= volta_fp16_min_t());
+    return mp.fallback || pf_wmma() || (volta_fp16_min_t() > 0 && T >= volta_fp16_min_t());
 }
 // #136 P3: a layout whose chunks run the fused experts (STRATA_PF_FUSED=1, the Q2_0 pack, a streamed chunk of
 // stream_all_min() tokens or more).  Its GU, H and Xq hold only the fused path's grouping tables, int8 H and per-token
@@ -2923,11 +2932,15 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                                 return true;
                             });
                         }
+                        const bool wmma_l = use_mmq && pf_wmma() && !fused_l && on_peer.empty() && lay.native &&
+                                            mmq_dt == 42 && strata::kernels::iq_row_bytes(mmq_gt, N) > 0;
                         const size_t mmq_gub = use_mmq ? mmq::matrix_bytes(mmq_gt, 1280, N) : 0;
                         const size_t mmq_db = use_mmq ? mmq::matrix_bytes(mmq_dt, N, 640) : 0;
                         pt.mark(kPfGather, cs);
                         if (use_mmq) {
                             // step 2b: the layer's activations as q8_1 rows in expert order, straight from `mixed`
+                            if (wmma_l) gather_rows16(m.mixed_h, m.src_dev, m.Xs, T * K, N, m.cs);
+                            else
                             mmq::quantize(m.mixed, m.src_dev, m.Xq, mmq_gt, N, N, T * K, m.cs);
                             // each group's rows: absolute bounds (gate/up reads the layer's rows), relative ones (down
                             // reads the group's own quantized H)
@@ -3285,6 +3298,19 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                                 // the zeroed tail after the group's last expert (see MMQ_TAIL)
                                 cudaMemsetAsync(m.grp_gu + (size_t) ngx * mmq_gub, 0, MMQ_TAIL, m.cs);
                                 cudaMemsetAsync(m.grp_d + (size_t) ngx * mmq_db, 0, MMQ_TAIL, m.cs);
+                                if (wmma_l) {   // STRATA_PF_WMMA: the group on FP16 tensor-core tiles
+                                    const int32_t* dnb = m.bounds_dev + n + 1 + g * (MMQ_GROUP + 1);
+                                    const bool ok1 = strata::kernels::gemm_iq_f16_grouped(
+                                        mmq_gt, m.grp_gu, mmq_gub, 1280, (int) N, m.Xs, (int) N, m.bounds_dev + j0, ngx,
+                                        (int) maxr, m.GU, 1280, m.cs);
+                                    swiglu_split_f16(m.GU + r0 * 1280, m.Hh + r0 * 640, nr, 640, !lay.native, m.cs);
+                                    pt.mark(kPfGemmD, cs);
+                                    const bool ok2 = strata::kernels::gemm_iq_f16_grouped(
+                                        mmq_dt, m.grp_d, mmq_db, (int) N, 640, m.Hh + r0 * 640, 640, dnb, ngx, (int) maxr,
+                                        m.Dm + r0 * N, (int) N, m.cs);
+                                    if (!ok1 || !ok2) { err = "prefill: STRATA_PF_WMMA launch failed"; return false; }
+                                    return true;
+                                }
                                 mmq::Product gu;
                                 gu.w = m.grp_gu; gu.type = mmq_gt; gu.w_rows = 1280; gu.w_cols = N; gu.expert_bytes = mmq_gub;
                                 gu.n = ngx; gu.xq = m.Xq; gu.bounds = m.bounds_dev + j0; gu.ids = m.ids_identity;

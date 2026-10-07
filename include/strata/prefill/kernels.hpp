@@ -79,6 +79,7 @@ void swiglu_interleaved(const float* gu, uint16_t* h16, int64_t n, void* stream)
 /// floats) gets the factor that undoes it on the down product's output (scale_rows_inv); other rows: inv 1, same bits
 void swiglu_interleaved_scaled(const float* gu, uint16_t* h16, float* inv, int64_t n, void* stream);
 void scale_rows_inv(float* y, const float* inv, int64_t n, int64_t cols, void* stream);
+void swiglu_split_f16(const float* gu, uint16_t* h16, int64_t rows, int n_ff, bool interleaved, void* stream);
 void q8rt_f16(const float* x, uint16_t* y, int64_t n, void* stream);   // EXPERIMENT
 void swiglu_il_f32(const float* gu, float* h, int64_t n, void* stream);
 /// h16[n, r] = fp16(silu(g[n, r]) * u[n, r])   (the shared expert, gate and up separate, width 640)
