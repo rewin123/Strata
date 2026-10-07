@@ -2821,8 +2821,10 @@ size_t native_expert_scratch_bytes(int64_t cap, int64_t n_ff) {
 #endif
 #if defined(STRATA_HIP_GFX906)
 constexpr int kExpModeDefault = 7;
+constexpr int kExpFallback = 2;   // modes 5-8 on a format without an LDS kernel: R2
 #else
 constexpr int kExpModeDefault = 0;
+constexpr int kExpFallback = 0;   // ... the CUDA layout (V100, IQ2_XXS gate/up: R2 183 us vs 113)
 #endif
 #if STRATA_EXP_LAYOUTS
 // ---- AMD layouts for the grouped native experts (STRATA_EXP_MODE; 0 = the CUDA one above).
@@ -3488,7 +3490,7 @@ void native_expert_grouped(const NativeExpertLayout& L, const unsigned long long
             default: if (em0 >= 7) native_gu_lds_kernel<22, 1, true><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up); else if (em0 == 6) native_gu_lds_kernel<22, 1><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up); else native_gu_lds_kernel<22, 0><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up); break;
         }
     } else {
-    const int em = em0 >= 5 ? 2 : em0;
+    const int em = em0 >= 5 ? kExpFallback : em0;
     const dim3 ggu_amd((unsigned) ((2 * L.n_ff + (em == 1 ? 3 : em == 4 ? 31 : 15)) / (em == 1 ? 4 : em == 4 ? 32 : 16)), (unsigned) cap_groups);
 #define STRATA_GU_AMD(T) \
     case T: if (em == 1) native_gu_amd_kernel<T, 1><<<ggu_amd, 256, 0, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up); \
@@ -3545,7 +3547,7 @@ void native_expert_grouped(const NativeExpertLayout& L, const unsigned long long
         check("native_expert_grouped/down");
         return;
     }
-    const int em = em0 >= 5 ? 2 : em0;
+    const int em = em0 >= 5 ? kExpFallback : em0;
     const dim3 gd_amd((unsigned) ((L.n_embd + (em == 1 ? 3 : em == 4 ? 31 : 15)) / (em == 1 ? 4 : em == 4 ? 32 : 16)), (unsigned) cap_groups);
 #define STRATA_D_AMD(T) \
     case T: if (em == 1) native_down_amd_kernel<T, 1><<<gd_amd, 256, 0, s>>>(grp_ptr, grp_start, n_groups, ent_dst, hq, L, out); \
