@@ -2812,7 +2812,19 @@ size_t native_expert_scratch_bytes(int64_t cap, int64_t n_ff) {
 }
 
 
+// The AMD layouts below (STRATA_EXP_MODE) also build for CUDA, where they are opt-in: mode 0, the CUDA layout above,
+// stays the default.
+#if defined(STRATA_HIP_GFX906) || !defined(__HIPCC__)
+#define STRATA_EXP_LAYOUTS 1
+#else
+#define STRATA_EXP_LAYOUTS 0
+#endif
 #if defined(STRATA_HIP_GFX906)
+constexpr int kExpModeDefault = 7;
+#else
+constexpr int kExpModeDefault = 0;
+#endif
+#if STRATA_EXP_LAYOUTS
 // ---- AMD layouts for the grouped native experts (STRATA_EXP_MODE; 0 = the CUDA one above).
 // 1 (W64): a row per 64-lane wavefront - 4x the wavefronts, ~1-2 calls per lane, a 64-lane butterfly.
 // 2 (R2):  a 32-lane logical warp computes TWO rows in one loop - two independent load chains in flight.
@@ -2826,7 +2838,11 @@ __device__ __forceinline__ float row_dot64(const uint8_t* row, const block_q8_1*
         s += F::dot(row, x + kbx * (F::qk / 32), kbx, iqs);
     }
 #pragma unroll
+#if defined(__HIPCC__)
     for (int o = 32; o > 0; o >>= 1) s += __shfl_xor(s, o, 64);
+#else
+    __trap();   // a 64-lane wavefront: mode 1 is gfx906's only
+#endif
     return s;
 }
 template<int TY>
@@ -3348,16 +3364,16 @@ __global__ void __launch_bounds__(256) native_gu_fused_kernel(const unsigned lon
     }
 }
 
-int g_exp_mode = -1;   // native_expert_set_mode (the bench); -1 = STRATA_EXP_MODE, default 7
+int g_exp_mode = -1;   // native_expert_set_mode (the bench); -1 = STRATA_EXP_MODE, default 7 (gfx906) / 0 (CUDA)
 int exp_mode() {
-    static const int m = [] { const char* v = std::getenv("STRATA_EXP_MODE"); return v ? std::atoi(v) : 7; }();
+    static const int m = [] { const char* v = std::getenv("STRATA_EXP_MODE"); return v ? std::atoi(v) : kExpModeDefault; }();
     return g_exp_mode >= 0 ? g_exp_mode : m;
 }
 #endif
 int g_exp_phase = 0;   // the bench: 0 all, 1 gate/up + swiglu + quantize only, 2 down only
 
 void native_expert_set_mode(int mode, int phase) {
-#if defined(STRATA_HIP_GFX906)
+#if STRATA_EXP_LAYOUTS
     g_exp_mode = mode;
 #else
     (void) mode;
@@ -3416,10 +3432,10 @@ void native_expert_grouped(const NativeExpertLayout& L, const unsigned long long
     const int64_t gy = (v1 || grid_groups <= 0 || grid_groups > cap_groups) ? cap_groups : grid_groups;
     const int gu_rows = (!g_old_kernels && !g_no_sub16_gu && L.n_embd == 2560 && gu_split(L.gu_type)) ? 16 : GU_ROWS;
     const dim3 ggu((unsigned) ((2 * L.n_ff + gu_rows - 1) / gu_rows), (unsigned) gy);
-#if defined(STRATA_HIP_GFX906)
+#if STRATA_EXP_LAYOUTS
     const int em0 = exp_mode();
 #endif
-#if defined(STRATA_HIP_GFX906)
+#if STRATA_EXP_LAYOUTS
     const bool fused_gu = em0 == 8 && (L.gu_type == 18 || L.gu_type == 21 || L.gu_type == 22 || L.gu_type == 23) &&
                           L.n_ff % 32 == 0;
     if (fused_gu && g_exp_phase != 2) {
@@ -3437,7 +3453,7 @@ void native_expert_grouped(const NativeExpertLayout& L, const unsigned long long
 #else
     if (g_exp_phase != 2) {
 #endif
-#if defined(STRATA_HIP_GFX906)
+#if STRATA_EXP_LAYOUTS
     const bool lds_gu = (em0 == 5 || em0 == 6 || em0 == 7 || em0 == 8) && (L.gu_type == 18 || L.gu_type == 21 || L.gu_type == 22 || L.gu_type == 23);
     if (lds_gu) {
         const dim3 gl((unsigned) ((2 * L.n_ff + LDS_RB - 1) / LDS_RB), (unsigned) cap_groups);
@@ -3472,7 +3488,7 @@ void native_expert_grouped(const NativeExpertLayout& L, const unsigned long long
 #undef STRATA_GU
         default: std::fprintf(stderr, "native_expert_grouped: gate/up type %d\n", L.gu_type); std::exit(1);
     }
-#if defined(STRATA_HIP_GFX906)
+#if STRATA_EXP_LAYOUTS
     }
 #endif
     check("native_expert_grouped/gu");
@@ -3497,7 +3513,7 @@ void native_expert_grouped(const NativeExpertLayout& L, const unsigned long long
     if (g_exp_phase == 1) return;
     const int d_rows = (!g_old_kernels && !g_no_sub16_gu && L.n_ff == 640) ? (L.d_type == 20 ? 32 : (L.d_type == 42 ? 16 : 8)) : 8;
     const dim3 gd((unsigned) ((L.n_embd + d_rows - 1) / d_rows), (unsigned) gy);
-#if defined(STRATA_HIP_GFX906)
+#if STRATA_EXP_LAYOUTS
     if ((em0 == 7 || em0 == 8) && (L.d_type == 20 || L.d_type == 42)) {
         const dim3 gl((unsigned) ((L.n_embd + LDS_RB - 1) / LDS_RB), (unsigned) cap_groups);
         const size_t sh = (size_t) LDS_NT * (size_t) (L.n_ff / 32) * sizeof(block_q8_1);
