@@ -75,6 +75,10 @@ void route(const float* logits, int32_t* ids, float* weights, int64_t T, int64_t
 void blob_dequant(const uint8_t* blob, uint16_t* gu16, uint16_t* down16, void* stream);
 /// h16[n, r] = fp16(silu(gu[n, 2r]) * gu[n, 2r + 1])   (the interleaved expert gate/up)
 void swiglu_interleaved(const float* gu, uint16_t* h16, int64_t n, void* stream);
+/// swiglu_interleaved without the saturation: a row past 32768 is scaled by a power of two into FP16 and `inv` (n
+/// floats) gets the factor that undoes it on the down product's output (scale_rows_inv); other rows: inv 1, same bits
+void swiglu_interleaved_scaled(const float* gu, uint16_t* h16, float* inv, int64_t n, void* stream);
+void scale_rows_inv(float* y, const float* inv, int64_t n, int64_t cols, void* stream);
 /// h16[n, r] = fp16(silu(g[n, r]) * u[n, r])   (the shared expert, gate and up separate, width 640)
 void swiglu_pair(const float* g, const float* u, uint16_t* h16, int64_t n, void* stream);
 /// dst[i] = src[i] for n int32s, as a kernel: either side may be mapped host memory, and the copy never waits

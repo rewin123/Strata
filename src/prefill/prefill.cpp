@@ -629,6 +629,7 @@ struct Prefill::Impl {
           *shared = nullptr, *sg = nullptr;
     int32_t *ids = nullptr, *slot_dev = nullptr, *src_dev = nullptr;
     uint16_t *Xs = nullptr, *Hh = nullptr, *sh_h = nullptr;
+    float* Hinv = nullptr;                      // the FP16 path: per row, the inverse of H's scale
     // step 2b (MMQ): the activations quantized per layer, H in FP32 and its group's quantized rows, the identity
     // row map, the group bounds, the group buffers of gathered experts
     void *Xq = nullptr, *Hq = nullptr;
@@ -894,6 +895,7 @@ uint64_t moe_set_bytes(size_t T, int64_t n_expert, bool fused) {
     if (fp16_bufs(mp, (int64_t) T)) a.take<uint16_t>(T * K * N, ok);
     a.take<float>(mb.gu, ok);
     if (fp16_bufs(mp, (int64_t) T)) a.take<uint16_t>(T * K * 640, ok);
+    if (fp16_bufs(mp, (int64_t) T)) a.take<float>(T * K, ok);
     a.take<float>(T * K * N, ok); a.take<float>(T * 640, ok);
     a.take<float>(T * 640, ok); a.take<uint16_t>(T * 640, ok); a.take<float>(T * N, ok); a.take<float>(T, ok);
     if (mp.any) {
@@ -1085,6 +1087,7 @@ bool Prefill::carve(size_t T, void* alloc) {
         m.Xs = fp16_bufs(mp, (int64_t) T) ? c.take<uint16_t>(T * K * N, ok) : nullptr;
         m.GU = c.take<float>(mb.gu, ok);
         m.Hh = fp16_bufs(mp, (int64_t) T) ? c.take<uint16_t>(T * K * 640, ok) : nullptr;
+        m.Hinv = fp16_bufs(mp, (int64_t) T) ? c.take<float>(T * K, ok) : nullptr;
         m.Dm = c.take<float>(T * K * N, ok);
         m.sgate = c.take<float>(T * 640, ok); m.sup = c.take<float>(T * 640, ok); m.sh_h = c.take<uint16_t>(T * 640, ok);
         m.shared = c.take<float>(T * N, ok); m.sg = c.take<float>(T, ok);
@@ -3302,9 +3305,10 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                             const int64_t o0 = m.off[(size_t) e], ne = m.cnt[(size_t) e];
                             pt.mark(kPfGemmGU, cs);
                             m.gemm.f16(m.Xs + o0 * N, m.dq_gu[q], m.GU + o0 * 1280, ne, 1280, N);
-                            swiglu_interleaved(m.GU + o0 * 1280, m.Hh + o0 * 640, ne, m.cs);
+                            swiglu_interleaved_scaled(m.GU + o0 * 1280, m.Hh + o0 * 640, m.Hinv + o0, ne, m.cs);
                             pt.mark(kPfGemmD, cs);
                             m.gemm.f16(m.Hh + o0 * 640, m.dq_d[q], m.Dm + o0 * N, ne, N, 640);
+                            scale_rows_inv(m.Dm + o0 * N, m.Hinv + o0, ne, N, m.cs);
                             return true;
                         };
                         if (!stream_all) {

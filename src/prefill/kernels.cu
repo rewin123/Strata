@@ -1208,6 +1208,42 @@ __global__ void swiglu_il_kernel(const float* __restrict__ gu, uint16_t* __restr
     const float g = gu[r * 1280 + 2 * k], u = gu[r * 1280 + 2 * k + 1];
     h16[i] = hf_sat(g / (1.0f + __expf(-g)) * u);
 }
+// swiglu_il_kernel with a row scale instead of the saturation: a row whose largest |h| passes 32768 is scaled by a
+// power of two into FP16's range (exact; `inv` gets the inverse for the down product's output), every other row is
+// written exactly as swiglu_il_kernel writes it and gets inv 1.  One block of 128 threads per row (640 values).
+__global__ void __launch_bounds__(128) swiglu_il_scaled_kernel(const float* __restrict__ gu, uint16_t* __restrict__ h16,
+                                                               float* __restrict__ inv) {
+    __shared__ float red[4];
+    const int64_t r = blockIdx.x;
+    const int t = threadIdx.x;
+    float h[5], amax = 0.0f;
+#pragma unroll
+    for (int q = 0; q < 5; ++q) {
+        const int k = t + 128 * q;
+        const float g = gu[r * 1280 + 2 * k], u = gu[r * 1280 + 2 * k + 1];
+        h[q] = g / (1.0f + __expf(-g)) * u;
+        amax = fmaxf(amax, fabsf(h[q]));   // a NaN is ignored here and stays NaN below
+    }
+#pragma unroll
+    for (int o = 16; o > 0; o >>= 1) amax = fmaxf(amax, __shfl_xor_sync(0xffffffffu, amax, o));
+    if ((t & 31) == 0) red[t >> 5] = amax;
+    __syncthreads();
+    amax = fmaxf(fmaxf(red[0], red[1]), fmaxf(red[2], red[3]));
+    int e = 0;
+    if (amax > 32768.0f && amax <= 3.0e38f) {
+        frexpf(amax / 32768.0f, &e);           // amax / 2^e <= 32768
+    }
+    const float sc = ldexpf(1.0f, -e);
+#pragma unroll
+    for (int q = 0; q < 5; ++q) h16[r * 640 + t + 128 * q] = hf_sat(e ? h[q] * sc : h[q]);
+    if (t == 0) inv[r] = ldexpf(1.0f, e);
+}
+__global__ void scale_rows_inv_kernel(float* __restrict__ y, const float* __restrict__ inv, int64_t n, int64_t cols) {
+    const int64_t i = (int64_t) blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n * cols) return;
+    const float v = inv[i / cols];
+    if (v != 1.0f) y[i] *= v;
+}
 __global__ void swiglu_pair_kernel(const float* __restrict__ g, const float* __restrict__ u, uint16_t* __restrict__ h16,
                                    int64_t n) {
     const int64_t i = (int64_t) blockIdx.x * blockDim.x + threadIdx.x;
@@ -1668,6 +1704,16 @@ void swiglu_interleaved(const float* gu, uint16_t* h16, int64_t n, void* stream)
     if (n <= 0) return;
     swiglu_il_kernel<<<blocks_for(n * 640), 256, 0, (cudaStream_t) stream>>>(gu, h16, n);
     check("swiglu_interleaved");
+}
+void swiglu_interleaved_scaled(const float* gu, uint16_t* h16, float* inv, int64_t n, void* stream) {
+    if (n <= 0) return;
+    swiglu_il_scaled_kernel<<<(unsigned) n, 128, 0, (cudaStream_t) stream>>>(gu, h16, inv);
+    check("swiglu_interleaved_scaled");
+}
+void scale_rows_inv(float* y, const float* inv, int64_t n, int64_t cols, void* stream) {
+    if (n <= 0) return;
+    scale_rows_inv_kernel<<<blocks_for(n * cols), 256, 0, (cudaStream_t) stream>>>(y, inv, n, cols);
+    check("scale_rows_inv");
 }
 void swiglu_pair(const float* g, const float* u, uint16_t* h16, int64_t n, void* stream) {
     swiglu_pair_kernel<<<blocks_for(n * 640), 256, 0, (cudaStream_t) stream>>>(g, u, h16, n);
