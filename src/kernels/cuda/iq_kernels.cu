@@ -2995,6 +2995,7 @@ __global__ void __launch_bounds__(256) native_down_amd_kernel(const unsigned lon
 // output is bitwise the mode-2 one.
 template<int TY> struct GridOf;
 template<> struct GridOf<22> { using T = uint64_t; static constexpr int N = 1024; __device__ static const T* src() { return iq2s_grid; } };
+template<> struct GridOf<17> { using T = uint64_t; static constexpr int N = 512; __device__ static const T* src() { return iq2xs_grid; } };
 template<> struct GridOf<18> { using T = uint32_t; static constexpr int N = 256; __device__ static const T* src() { return iq3xxs_grid; } };
 template<> struct GridOf<21> { using T = uint32_t; static constexpr int N = 512; __device__ static const T* src() { return iq3s_grid; } };
 template<> struct GridOf<23> { using T = uint32_t; static constexpr int N = 1; __device__ static const T* src() { return iq3s_grid; } };   // IQ4_XS: no grid
@@ -3105,6 +3106,40 @@ template<int SG> struct DotG<21, SG> { __device__ static __forceinline__ float f
     }
     sumi *= 1 + 2 * ((bq3->scales[iqs / 4] >> ((iqs << 1) & 0x04)) & 0x0F);
     const float d = __half2float(bq3->d) * __low2float(bq8_1[iqs / 2].ds);
+    return d * sumi;
+} };
+
+// IQ2_XS: vec_dot_iq2_xs_q8_1 with the grid in LDS - the same integers, the same floats
+template<int SG> struct DotG<17, SG> { __device__ static __forceinline__ float f(const void* vbq, const block_q8_1* bq8_1, int kbx, int iqs,
+                                                      const uint64_t* grid) {
+    const block_iq2_xs* bq2 = (const block_iq2_xs*) vbq + kbx;
+    const int2 q2_packed = make_int2(get_int_b2(bq2->qs, iqs + 0), get_int_b2(bq2->qs, iqs + 1));
+    const uint16_t* q2 = (const uint16_t*) &q2_packed;
+    const int ls0 = bq2->scales[iqs / 2] & 0x0F;
+    const int ls1 = bq2->scales[iqs / 2] >> 4;
+    int sumi0 = 0, sumi1 = 0;
+#pragma unroll
+    for (int l0 = 0; l0 < 8; l0 += 2) {
+        const uint2 grid_pos = *(const uint2*) (grid + (q2[l0 / 2] & 0x1FF));
+        const int u0 = get_int_b4(bq8_1[iqs / 2].qs, l0 + 0);
+        const int u1 = get_int_b4(bq8_1[iqs / 2].qs, l0 + 1);
+        int& acc = l0 < 4 ? sumi0 : sumi1;
+        if constexpr (SG == 1) {
+            const uint32_t v = q2[l0 / 2] >> 9, sg = v ^ ((__popc(v) & 1) << 7);
+            const int m0 = nib_mask(sg), m1 = nib_mask(sg >> 4);
+            acc = ggml_cuda_dp4a((int) grid_pos.x ^ m0, u0, acc);
+            acc = ggml_cuda_dp4a((int) grid_pos.y ^ m1, u1, acc);
+            acc -= ggml_cuda_dp4a(m1, u1, ggml_cuda_dp4a(m0, u0, 0));
+        } else {
+            const uint32_t signs = unpack_ksigns(q2[l0 / 2] >> 9);
+            const int signs0 = __vcmpne4(signs & 0x08040201, 0);
+            const int signs1 = __vcmpne4(signs & 0x80402010, 0);
+            acc = ggml_cuda_dp4a(__vsub4(grid_pos.x ^ signs0, signs0), u0, acc);
+            acc = ggml_cuda_dp4a(__vsub4(grid_pos.y ^ signs1, signs1), u1, acc);
+        }
+    }
+    const int sumi = (sumi0 * ls0 + sumi1 * ls1 + (sumi0 + sumi1) / 2) / 4;
+    const float d = __half2float(bq2->d) * __low2float(bq8_1[iqs / 2].ds);
     return d * sumi;
 } };
 
@@ -3279,7 +3314,7 @@ __global__ void __launch_bounds__(256) native_down_lds_kernel(const unsigned lon
 // [r0, r0 + 32): gate rows r0.. and up rows r0.. (64 weight rows, the same per-(row, entry) sums as mode 7), so
 // one 32-lane warp per entry holds exactly one q8_1 block of h and runs quantize_q8_1_kernel's own code on it -
 // bitwise the separate kernels' hq, two launches fewer per call.
-template<int TG>
+template<int TG, int SG = 1>
 __global__ void __launch_bounds__(256) native_gu_fused_kernel(const unsigned long long* __restrict__ grp_ptr,
                                                               const int32_t* __restrict__ grp_start,
                                                               const int32_t* __restrict__ n_groups,
@@ -3326,8 +3361,8 @@ __global__ void __launch_bounds__(256) native_gu_fused_kernel(const unsigned lon
 #pragma unroll
                     for (int j = 0; j < NTC; ++j) {
                         const block_q8_1* xk = sx + (size_t) j * xb + kbx * (F::qk / 32);
-                        const float a = DotG<TG, 1>::f(w0, xk, kbx, iqs, sgrid);
-                        const float b = DotG<TG, 1>::f(w1, xk, kbx, iqs, sgrid);
+                        const float a = DotG<TG, SG>::f(w0, xk, kbx, iqs, sgrid);
+                        const float b = DotG<TG, SG>::f(w1, xk, kbx, iqs, sgrid);
                         s0[j] += a;
                         s1[j] += b;
                     }
@@ -3370,6 +3405,16 @@ int exp_mode() {
     return g_exp_mode >= 0 ? g_exp_mode : m;
 }
 #endif
+// the fused gate/up's sign handling: 1 = nib_mask (gfx906: no byte-SIMD ops), 0 = __vcmpne4 / __vsub4
+// (STRATA_EXP_SIGNS=0|1; CUDA's default 0)
+int exp_signs() {
+#if defined(STRATA_HIP_GFX906)
+    static const int v = [] { const char* e = std::getenv("STRATA_EXP_SIGNS"); return e ? std::atoi(e) : 1; }();
+#else
+    static const int v = [] { const char* e = std::getenv("STRATA_EXP_SIGNS"); return e ? std::atoi(e) : 0; }();
+#endif
+    return v;
+}
 int g_exp_phase = 0;   // the bench: 0 all, 1 gate/up + swiglu + quantize only, 2 down only
 
 void native_expert_set_mode(int mode, int phase) {
@@ -3442,16 +3487,20 @@ void native_expert_grouped(const NativeExpertLayout& L, const unsigned long long
 #endif
 #endif
 #if STRATA_EXP_LAYOUTS
-    const bool fused_gu = em0 == 8 && (L.gu_type == 18 || L.gu_type == 21 || L.gu_type == 22 || L.gu_type == 23) &&
+    const bool fused_gu = em0 == 8 && (L.gu_type == 17 || L.gu_type == 18 || L.gu_type == 21 || L.gu_type == 22 || L.gu_type == 23) &&
                           L.n_ff % 32 == 0;
     if (fused_gu && g_exp_phase != 2) {
         const dim3 gl((unsigned) (L.n_ff / 32), (unsigned) cap_groups);
         const size_t sh = (size_t) LDS_NT * (size_t) (L.n_embd / 32) * sizeof(block_q8_1);
         switch (L.gu_type) {
-            case 18: native_gu_fused_kernel<18><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, hq); break;
-            case 21: native_gu_fused_kernel<21><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, hq); break;
-            case 23: native_gu_fused_kernel<23><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, hq); break;
-            default: native_gu_fused_kernel<22><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, hq); break;
+#define STRATA_GU_FUSED(T) native_gu_fused_kernel<T><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, hq); \
+        else native_gu_fused_kernel<T, 0><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, hq)
+            case 17: if (exp_signs()) STRATA_GU_FUSED(17); break;
+            case 18: if (exp_signs()) STRATA_GU_FUSED(18); break;
+            case 21: if (exp_signs()) STRATA_GU_FUSED(21); break;
+            case 23: if (exp_signs()) STRATA_GU_FUSED(23); break;
+            default: if (exp_signs()) STRATA_GU_FUSED(22); break;
+#undef STRATA_GU_FUSED
         }
         check("native_expert_grouped/gu fused");
     }
@@ -3460,11 +3509,12 @@ void native_expert_grouped(const NativeExpertLayout& L, const unsigned long long
     if (g_exp_phase != 2) {
 #endif
 #if STRATA_EXP_LAYOUTS
-    const bool lds_gu = (em0 == 5 || em0 == 6 || em0 == 7 || em0 == 8) && (L.gu_type == 18 || L.gu_type == 21 || L.gu_type == 22 || L.gu_type == 23);
+    const bool lds_gu = (em0 == 5 || em0 == 6 || em0 == 7 || em0 == 8) && (L.gu_type == 17 || L.gu_type == 18 || L.gu_type == 21 || L.gu_type == 22 || L.gu_type == 23);
     if (lds_gu) {
         const dim3 gl((unsigned) ((2 * L.n_ff + LDS_RB - 1) / LDS_RB), (unsigned) cap_groups);
         const size_t sh = (size_t) LDS_NT * (size_t) (L.n_embd / 32) * sizeof(block_q8_1);
         switch (L.gu_type) {
+            case 17: if (em0 >= 7) native_gu_lds_kernel<17, 1, true><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up); else if (em0 == 6) native_gu_lds_kernel<17, 1><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up); else native_gu_lds_kernel<17, 0><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up); break;
             case 18: if (em0 >= 7) native_gu_lds_kernel<18, 1, true><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up); else if (em0 == 6) native_gu_lds_kernel<18, 1><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up); else native_gu_lds_kernel<18, 0><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up); break;
             case 21: if (em0 >= 7) native_gu_lds_kernel<21, 1, true><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up); else if (em0 == 6) native_gu_lds_kernel<21, 1><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up); else native_gu_lds_kernel<21, 0><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up); break;
             case 23: if (em0 >= 7) native_gu_lds_kernel<23, 1, true><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up); else native_gu_lds_kernel<23, 1><<<gl, 256, sh, s>>>(grp_ptr, grp_start, n_groups, ent_tok, X, L, gate, up); break;
