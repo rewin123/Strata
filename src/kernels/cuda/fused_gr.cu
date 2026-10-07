@@ -800,14 +800,35 @@ __global__ void __launch_bounds__(RW * 32) gr_down_rows_kernel(GrMulti m) {
     }
 }
 
-// STRATA_GR_DOWN_ROWS: 0 = off, else the rows (warps) per block of gr_down_rows_kernel (1, 2, 4 or 8)
+// the current device is Volta (sm_70): its defaults for the fast norm/up and the row-per-warp down projection
+bool cur_dev_volta() {
+#if defined(__HIPCC__)
+    return false;
+#else
+    static int per_dev[64];   // 0 unknown, 1 no, 2 yes
+    int dev = 0;
+    if (cudaGetDevice(&dev) != cudaSuccess || dev < 0 || dev >= 64) return false;
+    if (!per_dev[dev]) {
+        int major = 0, minor = 0;
+        cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, dev);
+        cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, dev);
+        per_dev[dev] = major == 7 && minor == 0 ? 2 : 1;
+    }
+    return per_dev[dev] == 2;
+#endif
+}
+
+// STRATA_GR_DOWN_ROWS: 0 = off, else the rows (warps) per block of gr_down_rows_kernel (1, 2, 4 or 8).  Default: 1 on
+// Volta (V100-SXM2, T 1-4: the read 46.7-66.8 -> 33.1-50.5 us with the fast norm/up), off elsewhere
 int gr_down_rows() {
-    static const int v = [] {
+    static const int env = [] {
         const char* e = std::getenv("STRATA_GR_DOWN_ROWS");
-        const int r = e ? std::atoi(e) : 0;
+        if (e == nullptr) return -1;
+        const int r = std::atoi(e);
         return r == 1 || r == 2 || r == 4 || r == 8 ? r : 0;
     }();
-    return v;
+    if (env >= 0) return env;
+    return cur_dev_volta() ? 1 : 0;
 }
 
 template <int RW>
@@ -1708,7 +1729,7 @@ static bool gr_fast() {
 #if defined(__HIPCC__)
     return true;
 #else
-    return false;   // CUDA: opt-in (STRATA_GR_FAST=1)
+    return cur_dev_volta();   // CUDA: on Volta (V100-SXM2: 50.9 -> 46.7 us a read at T 1, bitwise); elsewhere opt-in
 #endif
 }
 #else
