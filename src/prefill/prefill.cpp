@@ -814,6 +814,7 @@ constexpr size_t MMQ_TAIL = 4096;
 struct MmqPlan {
     bool any = false, fallback = true;
     std::vector<char> layer;                   // per layer: MMQ
+    std::vector<char> wmma_only;               // per layer: in the MMQ grouping for the WMMA tiles only (STRATA_PF_WMMA)
     std::vector<char> fo;                      // per layer: no MMQ here but the native fused kernels cover its formats
                                                // (gfx11: UD-Q4_K_XL's Q4_K / Q5_K and Q5_1 / Q8_0 experts, STRATA_PF_FUSED=1)
     size_t gu_max = 0, d_max = 0;
@@ -834,6 +835,15 @@ int64_t volta_fp16_min_t() {
     }();
     return v;
 }
+// STRATA_PF_WMMA=1: the MMQ layers' experts on FP16 tensor-core tiles (gemm_iq_f16_grouped), CUDA only
+bool pf_wmma() {
+#if defined(__HIPCC__)
+    return false;
+#else
+    static const bool on = [] { const char* e = std::getenv("STRATA_PF_WMMA"); return e != nullptr && e[0] == '1'; }();
+    return on;
+#endif
+}
 const MmqPlan& mmq_plan() {
     static const MmqPlan plan = [] {
         MmqPlan p;
@@ -843,11 +853,21 @@ const MmqPlan& mmq_plan() {
         const int64_t layers = lay.native ? (int64_t) lay.fmt.size() : lay.n_layers;
         p.layer.assign((size_t) std::max<int64_t>(layers, 0), 0);
         p.fo.assign(p.layer.size(), 0);
+        p.wmma_only.assign(p.layer.size(), 0);
         p.fallback = !on || layers <= 0;
         for (int64_t l = 0; on && l < layers; ++l) {
             const int gt = lay.native ? lay.fmt[(size_t) l].gu_type : 42, dt = lay.native ? lay.fmt[(size_t) l].d_type : 42;
             // #420: a tile on every GPU for these shapes (gate+up: 1280 rows, down: N rows), else the FP16 path
             if (!mmq::fits(gt, 1280) || !mmq::fits(dt, N)) {
+                // STRATA_PF_WMMA: a format dq_dispatch takes (IQ1_M) rides the MMQ grouping, computed by the WMMA tiles only
+                if (pf_wmma() && lay.native && dt == 42 && strata::kernels::iq_row_bytes(gt, N) > 0) {
+                    p.layer[(size_t) l] = 1;
+                    p.wmma_only[(size_t) l] = 1;
+                    p.any = true;
+                    p.gu_max = std::max(p.gu_max, mmq::matrix_bytes(gt, 1280, N));
+                    p.d_max = std::max(p.d_max, mmq::matrix_bytes(dt, N, 640));
+                    continue;
+                }
                 p.fallback = true;
                 // the fused path's buffers (Xq, H) exist for it; a chunk it does not take (a small one) keeps the FP16 path
                 if (on && lay.native && fused::native_supported(gt, dt)) { p.fo[(size_t) l] = 1; p.any = true; }
@@ -861,15 +881,6 @@ const MmqPlan& mmq_plan() {
         return p;
     }();
     return plan;
-}
-// STRATA_PF_WMMA=1: the MMQ layers' experts on FP16 tensor-core tiles (gemm_iq_f16_grouped), CUDA only
-bool pf_wmma() {
-#if defined(__HIPCC__)
-    return false;
-#else
-    static const bool on = [] { const char* e = std::getenv("STRATA_PF_WMMA"); return e != nullptr && e[0] == '1'; }();
-    return on;
-#endif
 }
 // the FP16 path's buffers (Xs, Hh) for chunks of up to T tokens: the fallback's, or Volta's big chunks
 bool fp16_bufs(const MmqPlan& mp, int64_t T) {
@@ -2934,6 +2945,10 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                         }
                         const bool wmma_l = use_mmq && pf_wmma() && !fused_l && on_peer.empty() && lay.native &&
                                             mmq_dt == 42 && strata::kernels::iq_row_bytes(mmq_gt, N) > 0;
+                        if (use_mmq && mmq_plan().wmma_only[(size_t) l] && !wmma_l) {
+                            err = "prefill: a layer only the WMMA tiles cover cannot take them here";
+                            return false;
+                        }
                         const size_t mmq_gub = use_mmq ? mmq::matrix_bytes(mmq_gt, 1280, N) : 0;
                         const size_t mmq_db = use_mmq ? mmq::matrix_bytes(mmq_dt, N, 640) : 0;
                         pt.mark(kPfGather, cs);
