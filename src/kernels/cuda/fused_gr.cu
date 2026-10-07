@@ -747,6 +747,87 @@ __global__ void __launch_bounds__(THREADS) gr_down_staged_kernel(GrMulti m) {
     }
 }
 
+// EXPERIMENT (STRATA_GR_DOWN_X=RW*10+RPW): the down projection with RPW rows per warp, RW warps per block, the
+// activations through L1: a lane's chunks lane + 32 q in ascending order per row, the staged read's dot8u, warp_sum
+// and epilogue - bitwise the plain read.
+template <int RW, int RPW, int MAX_T, bool EXACT_T>
+__global__ void __launch_bounds__(RW * 32) gr_down_x_kernel(GrMulti m) {
+    const int lane = threadIdx.x & 31, warp = threadIdx.x >> 5;
+    const int T = EXACT_T ? MAX_T : m.T;
+    const int r0 = (blockIdx.x * RW + warp) * RPW;
+    if (r0 >= LR + HC) return;
+    const uint4* w4[RPW];
+    bool act[RPW];
+#pragma unroll
+    for (int i = 0; i < RPW; ++i) {
+        const int r = r0 + i;
+        const bool inj = r >= LR;
+        act[i] = r < LR + HC && !(inj && m.a[0].w_inject == nullptr);
+        const int row = act[i] ? (inj ? r - LR : r) : 0;
+        w4[i] = reinterpret_cast<const uint4*>(((act[i] && inj) ? m.a[0].w_inject : m.a[0].w_down) + (size_t) row * D);
+    }
+    constexpr int NC = D / 8 / 32;
+    constexpr int PF = 4;
+    float acc[RPW][MAX_T];
+#pragma unroll
+    for (int i = 0; i < RPW; ++i)
+#pragma unroll
+        for (int k = 0; k < MAX_T; ++k) acc[i][k] = 0.0f;
+#pragma unroll 1
+    for (int q0 = 0; q0 < NC; q0 += PF) {
+        uint4 wv[RPW][PF];
+#pragma unroll
+        for (int i = 0; i < RPW; ++i)
+#pragma unroll
+            for (int q = 0; q < PF; ++q) wv[i][q] = act[i] ? __ldg(w4[i] + lane + 32 * (q0 + q)) : make_uint4(0, 0, 0, 0);
+#pragma unroll
+        for (int q = 0; q < PF; ++q) {
+            const int j = lane + 32 * (q0 + q);
+#pragma unroll
+            for (int k = 0; k < MAX_T; ++k) {
+                if (EXACT_T || k < T) {
+                    const float4* x = reinterpret_cast<const float4*>(m.xn + (size_t) k * D) + 2 * j;
+                    const float4 x0 = __ldg(x), x1 = __ldg(x + 1);
+#pragma unroll
+                    for (int i = 0; i < RPW; ++i) acc[i][k] += dot8u(unpack8(wv[i][q]), x0, x1);
+                }
+            }
+        }
+    }
+#pragma unroll
+    for (int i = 0; i < RPW; ++i) {
+        if (!act[i]) continue;
+        const int r = r0 + i;
+        const bool inj = r >= LR;
+        const int row = inj ? r - LR : r;
+#pragma unroll
+        for (int k = 0; k < MAX_T; ++k) {
+            const float sk = (EXACT_T || k < T) ? warp_sum(acc[i][k]) : 0.0f;
+            if ((!EXACT_T && k >= T) || lane != k) continue;
+            if (inj) m.a[k].inject_out[row] = sk;
+            else {
+                const float x = sk / (float) HC;
+                m.a[k].lo[row] = x / (1.0f + __expf(-x));
+            }
+        }
+    }
+}
+int gr_down_x() {
+    static const int v = [] { const char* e = std::getenv("STRATA_GR_DOWN_X"); return e ? std::atoi(e) : 0; }();
+    return v;
+}
+template <int RW, int RPW>
+void launch_down_x(const GrMulti& m, int n_tok, cudaStream_t st) {
+    const dim3 grid((unsigned) ((LR + HC + RW * RPW - 1) / (RW * RPW)));
+    switch (n_tok) {
+        case 1: gr_down_x_kernel<RW, RPW, 1, true><<<grid, RW * 32, 0, st>>>(m); break;
+        case 2: gr_down_x_kernel<RW, RPW, 2, true><<<grid, RW * 32, 0, st>>>(m); break;
+        case 3: gr_down_x_kernel<RW, RPW, 3, true><<<grid, RW * 32, 0, st>>>(m); break;
+        case 4: gr_down_x_kernel<RW, RPW, 4, true><<<grid, RW * 32, 0, st>>>(m); break;
+        default: gr_down_x_kernel<RW, RPW, kFusedGrMaxT, false><<<grid, RW * 32, 0, st>>>(m); break;
+    }
+}
+
 // the current device is Volta (sm_70): the fast norm/up is its default
 bool cur_dev_volta() {
 #if defined(__HIPCC__)
@@ -894,6 +975,14 @@ void launch_multi(const GrMulti& m, int variant, cudaStream_t st, unsigned long 
         return no != nullptr && no[0] != '\0' && no[0] != '0';
     }();
     const bool exact_t = !no_multi_gr;
+    const int dx = gr_down_x();
+    if (dx == 11) launch_down_x<1, 1>(m, n_tok, st);
+    else if (dx == 12) launch_down_x<1, 2>(m, n_tok, st);
+    else if (dx == 14) launch_down_x<1, 4>(m, n_tok, st);
+    else if (dx == 22) launch_down_x<2, 2>(m, n_tok, st);
+    else if (dx == 42) launch_down_x<4, 2>(m, n_tok, st);
+    else if (dx == 24) launch_down_x<2, 4>(m, n_tok, st);
+    else
     for (int c0 = 0; c0 < n_tok; c0 += chunk_tok) {
         const int ct = n_tok - c0 < chunk_tok ? n_tok - c0 : chunk_tok;
         GrMulti c{};
