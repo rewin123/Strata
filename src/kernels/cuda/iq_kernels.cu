@@ -3650,6 +3650,23 @@ __global__ void __launch_bounds__(WG_THREADS) gemm_iq_f16_grouped_kernel(int ty,
         for (int a = 0; a < 2; ++a)
 #pragma unroll
             for (int b = 0; b < 2; ++b) wmma::fill_fragment(acc[t][a][b], 0.0f);
+    // the activation tiles in order (k0, m-tile, half): the next one's 4 uint4 per thread are loaded into registers
+    // while the current one is multiplied (the first before the weights' dequantization)
+    constexpr int XQ = WG_BM * (WG_XK / 8) / WG_THREADS;        // 4
+    const int nx = WK / WG_XK, per_k = nmt * nx, total = (K / WK) * per_k;
+    uint4 xr[XQ];
+    auto load_x = [&](int it) {
+        const int kb = it / per_k, rem = it % per_k, t = rem / nx, xh = rem % nx;
+        const int rows = min(WG_BM, crow - t * WG_BM);
+#pragma unroll
+        for (int q = 0; q < XQ; ++q) {
+            const int i = tid + q * WG_THREADS, r = i / (WG_XK / 8), c = (i % (WG_XK / 8)) * 8;
+            xr[q] = r < rows ? *reinterpret_cast<const uint4*>(X + (size_t) (c0 + t * WG_BM + r) * ldx + kb * WK + xh * WG_XK + c)
+                             : make_uint4(0, 0, 0, 0);
+        }
+    };
+    load_x(0);
+    int it = 0;
     for (int k0 = 0; k0 < K; k0 += WK) {
         if constexpr (!Q20) {
             for (int r = warp; r < WG_BN; r += WG_THREADS / 32)
@@ -3672,17 +3689,16 @@ __global__ void __launch_bounds__(WG_THREADS) gemm_iq_f16_grouped_kernel(int ty,
 #pragma unroll
         for (int t = 0; t < WG_MT; ++t) {
             if (t >= nmt) break;
-            const int rows = min(WG_BM, crow - t * WG_BM);
 #pragma unroll 1
-            for (int xh = 0; xh < WK / WG_XK; ++xh) {
+            for (int xh = 0; xh < WK / WG_XK; ++xh, ++it) {
                 __syncthreads();                                 // the previous X tile is consumed (and W is written)
-                for (int i = tid; i < WG_BM * (WG_XK / 8); i += WG_THREADS) {
-                    const int r = i / (WG_XK / 8), c = (i % (WG_XK / 8)) * 8;
-                    uint4 v = make_uint4(0, 0, 0, 0);
-                    if (r < rows) v = *reinterpret_cast<const uint4*>(X + (size_t) (c0 + t * WG_BM + r) * ldx + k0 + xh * WG_XK + c);
-                    *reinterpret_cast<uint4*>(sx + r * LDX + c) = v;
+#pragma unroll
+                for (int q = 0; q < XQ; ++q) {
+                    const int i = tid + q * WG_THREADS, r = i / (WG_XK / 8), c = (i % (WG_XK / 8)) * 8;
+                    *reinterpret_cast<uint4*>(sx + r * LDX + c) = xr[q];
                 }
                 __syncthreads();
+                if (it + 1 < total) load_x(it + 1);
 #pragma unroll
                 for (int kk = 0; kk < WG_XK; kk += 16) {
                     wmma::fragment<wmma::matrix_a, 16, 16, 16, __half, wmma::row_major> a[2];
