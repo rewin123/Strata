@@ -747,6 +747,81 @@ __global__ void __launch_bounds__(THREADS) gr_down_staged_kernel(GrMulti m) {
     }
 }
 
+// The down projection as one warp per row in blocks of RW warps (STRATA_GR_DOWN_ROWS=RW): the plain read's 41 blocks
+// of 8 rows leave half of an 80-SM V100 idle, and before sm_80 the staged read's copy is not asynchronous.  Here the
+// grid covers every SM, the activations come through L1 (__ldg) instead of a shared-memory tile, and a lane's weight
+// chunks are loaded 8 ahead.  A lane still accumulates its chunks lane + 32 q in ascending order with the staged
+// read's dot8u, then the same warp_sum and epilogue: bitwise the plain and staged reads (gr_multi_parity).
+template <int RW, int MAX_T = kFusedGrMaxT, bool EXACT_T = false>
+__global__ void __launch_bounds__(RW * 32) gr_down_rows_kernel(GrMulti m) {
+    const int lane = threadIdx.x & 31, warp = threadIdx.x >> 5;
+    const int T = EXACT_T ? MAX_T : m.T;
+    const int r = blockIdx.x * RW + warp;            // LR rows of w_down, then HC rows of w_inject
+    const bool inject = r >= LR;
+    if (r >= LR + HC || (inject && m.a[0].w_inject == nullptr)) return;
+    const int row = inject ? r - LR : r;
+    const uint4* w4 = reinterpret_cast<const uint4*>((inject ? m.a[0].w_inject : m.a[0].w_down) + (size_t) row * D);
+    constexpr int NC = D / 8 / 32;                   // 40 chunks of 8 per lane
+    constexpr int PF = 8;
+    static_assert(NC % PF == 0, "whole prefetch groups");
+    float acc[MAX_T];
+#pragma unroll
+    for (int k = 0; k < MAX_T; ++k) acc[k] = 0.0f;
+#pragma unroll 1
+    for (int q0 = 0; q0 < NC; q0 += PF) {
+        uint4 wv[PF];
+#pragma unroll
+        for (int q = 0; q < PF; ++q) wv[q] = __ldg(w4 + lane + 32 * (q0 + q));
+#pragma unroll
+        for (int q = 0; q < PF; ++q) {
+            const int j = lane + 32 * (q0 + q);
+            const Bf16x8 wq = unpack8(wv[q]);
+#pragma unroll
+            for (int k = 0; k < MAX_T; ++k) {
+                if (EXACT_T || k < T) {
+                    const float4* x = reinterpret_cast<const float4*>(m.xn + (size_t) k * D) + 2 * j;
+                    acc[k] += dot8u(wq, __ldg(x), __ldg(x + 1));
+                }
+            }
+        }
+    }
+    float s[MAX_T];
+#pragma unroll
+    for (int k = 0; k < MAX_T; ++k) s[k] = (EXACT_T || k < T) ? warp_sum(acc[k]) : 0.0f;
+#pragma unroll
+    for (int k = 0; k < MAX_T; ++k) {
+        if ((!EXACT_T && k >= T) || lane != k) continue;
+        if (inject) {
+            m.a[k].inject_out[row] = s[k];
+        } else {
+            const float x = s[k] / (float) HC;
+            m.a[k].lo[row] = x / (1.0f + __expf(-x));
+        }
+    }
+}
+
+// STRATA_GR_DOWN_ROWS: 0 = off, else the rows (warps) per block of gr_down_rows_kernel (1, 2, 4 or 8)
+int gr_down_rows() {
+    static const int v = [] {
+        const char* e = std::getenv("STRATA_GR_DOWN_ROWS");
+        const int r = e ? std::atoi(e) : 0;
+        return r == 1 || r == 2 || r == 4 || r == 8 ? r : 0;
+    }();
+    return v;
+}
+
+template <int RW>
+void launch_down_rows(const GrMulti& m, int n_tok, cudaStream_t st) {
+    const dim3 grid((unsigned) ((LR + HC + RW - 1) / RW));
+    switch (n_tok) {
+        case 1: gr_down_rows_kernel<RW, 1, true><<<grid, RW * 32, 0, st>>>(m); break;
+        case 2: gr_down_rows_kernel<RW, 2, true><<<grid, RW * 32, 0, st>>>(m); break;
+        case 3: gr_down_rows_kernel<RW, 3, true><<<grid, RW * 32, 0, st>>>(m); break;
+        case 4: gr_down_rows_kernel<RW, 4, true><<<grid, RW * 32, 0, st>>>(m); break;
+        default: gr_down_rows_kernel<RW><<<grid, RW * 32, 0, st>>>(m); break;
+    }
+}
+
 // The tokens a down kernel may carry in one launch on the current card, and the plain read's tile: the plain read
 // stages n_tok * TILEV floats (1280 on sm_75, 2560 elsewhere), staged two tiles of n_tok * H_TILE.  The shared-memory
 // opt-in is set here once per device (a per-DEVICE setting: a layer split runs these kernels on two cards).
@@ -876,6 +951,12 @@ void launch_multi(const GrMulti& m, int variant, cudaStream_t st, unsigned long 
         return no != nullptr && no[0] != '\0' && no[0] != '0';
     }();
     const bool exact_t = !no_multi_gr;
+    const int down_rows = gr_down_rows();
+    if (down_rows == 1) launch_down_rows<1>(m, n_tok, st);
+    else if (down_rows == 2) launch_down_rows<2>(m, n_tok, st);
+    else if (down_rows == 4) launch_down_rows<4>(m, n_tok, st);
+    else if (down_rows == 8) launch_down_rows<8>(m, n_tok, st);
+    else
     for (int c0 = 0; c0 < n_tok; c0 += chunk_tok) {
         const int ct = n_tok - c0 < chunk_tok ? n_tok - c0 : chunk_tok;
         GrMulti c{};
