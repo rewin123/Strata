@@ -3134,8 +3134,8 @@ template<int SG> struct DotG<17, SG> { __device__ static __forceinline__ float f
             const uint32_t signs = unpack_ksigns(q2[l0 / 2] >> 9);
             const int signs0 = __vcmpne4(signs & 0x08040201, 0);
             const int signs1 = __vcmpne4(signs & 0x80402010, 0);
-            acc = ggml_cuda_dp4a(__vsub4(grid_pos.x ^ signs0, signs0), u0, acc);
-            acc = ggml_cuda_dp4a(__vsub4(grid_pos.y ^ signs1, signs1), u1, acc);
+            acc = ggml_cuda_dp4a((int) __vsub4(grid_pos.x ^ signs0, signs0), u0, acc);
+            acc = ggml_cuda_dp4a((int) __vsub4(grid_pos.y ^ signs1, signs1), u1, acc);
         }
     }
     const int sumi = (sumi0 * ls0 + sumi1 * ls1 + (sumi0 + sumi1) / 2) / 4;
