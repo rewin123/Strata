@@ -3399,19 +3399,36 @@ __global__ void __launch_bounds__(256) native_gu_fused_kernel(const unsigned lon
     }
 }
 
-int g_exp_mode = -1;   // native_expert_set_mode (the bench); -1 = STRATA_EXP_MODE, default 7 (gfx906) / 0 (CUDA)
+int g_exp_mode = -1;   // native_expert_set_mode (the bench); -1 = STRATA_EXP_MODE, else the card's default
 int exp_mode() {
-    static const int m = [] { const char* v = std::getenv("STRATA_EXP_MODE"); return v ? std::atoi(v) : kExpModeDefault; }();
-    return g_exp_mode >= 0 ? g_exp_mode : m;
+    static const int m = [] { const char* v = std::getenv("STRATA_EXP_MODE"); return v ? std::atoi(v) : -1; }();
+    if (g_exp_mode >= 0) return g_exp_mode;
+    if (m >= 0) return m;
+#if defined(STRATA_HIP_GFX906)
+    return kExpModeDefault;
+#else
+    // Volta (sm_70): mode 8, the grid and the group's activations in shared memory with SwiGLU + q8_1 fused
+    // (V100-SXM2, a verify window's VRAM call: 227 -> 159 us); every other CUDA card keeps the CUDA layout
+    static int per_dev[64];   // 0 unknown, else mode + 1
+    int dev = 0;
+    if (cudaGetDevice(&dev) != cudaSuccess || dev < 0 || dev >= 64) return kExpModeDefault;
+    if (!per_dev[dev]) {
+        int major = 0, minor = 0;
+        cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, dev);
+        cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, dev);
+        per_dev[dev] = 1 + (major == 7 && minor == 0 ? 8 : kExpModeDefault);
+    }
+    return per_dev[dev] - 1;
+#endif
 }
 #endif
 // the fused gate/up's sign handling: 1 = nib_mask (gfx906: no byte-SIMD ops), 0 = __vcmpne4 / __vsub4
-// (STRATA_EXP_SIGNS=0|1; CUDA's default 0)
+// (STRATA_EXP_SIGNS=0|1; 1 also on a V100: 158.5 vs 162.2 us for the bench VRAM call)
 int exp_signs() {
 #if defined(STRATA_HIP_GFX906)
     static const int v = [] { const char* e = std::getenv("STRATA_EXP_SIGNS"); return e ? std::atoi(e) : 1; }();
 #else
-    static const int v = [] { const char* e = std::getenv("STRATA_EXP_SIGNS"); return e ? std::atoi(e) : 0; }();
+    static const int v = [] { const char* e = std::getenv("STRATA_EXP_SIGNS"); return e ? std::atoi(e) : 1; }();
 #endif
     return v;
 }
