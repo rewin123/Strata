@@ -3327,6 +3327,37 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                                 m.mmq_ctx->run(dn, m.cs);
                                 return true;
                             }
+                            if (pf_wmma() && lay.native && lay.fmt[(size_t) l].d_type == 42 &&
+                                strata::kernels::iq_row_bytes(lay.fmt[(size_t) l].gu_type, N) > 0) {
+                                // STRATA_PF_WMMA: this expert on FP16 tensor-core tiles straight from its blob (gate,
+                                // up, down rows back to back); the rows' bounds as device pairs, uploaded per layer
+                                const auto& f = lay.fmt[(size_t) l];
+                                static int32_t* dpairs = nullptr;
+                                static std::vector<int32_t> hpairs;
+                                const int64_t ne_all = m.g->n_expert;
+                                if (dpairs == nullptr) cudaMalloc(&dpairs, (size_t) ne_all * 2 * sizeof(int32_t));
+                                if (j == 0) {
+                                    hpairs.resize((size_t) ne_all * 2);
+                                    for (int64_t x = 0; x < ne_all; ++x) {
+                                        hpairs[(size_t) (2 * x)] = (int32_t) m.off[(size_t) x];
+                                        hpairs[(size_t) (2 * x + 1)] = (int32_t) (m.off[(size_t) x] + m.cnt[(size_t) x]);
+                                    }
+                                    cudaMemcpyAsync(dpairs, hpairs.data(), hpairs.size() * sizeof(int32_t), cudaMemcpyHostToDevice, m.cs);
+                                }
+                                const int64_t o0 = m.off[(size_t) e], ne = m.cnt[(size_t) e];
+                                pt.mark(kPfGemmGU, cs);
+                                const bool ok1 = strata::kernels::gemm_iq_f16_grouped(f.gu_type, blob_dev, 0, 1280, (int) N, m.Xs,
+                                                                                      (int) N, dpairs + 2 * e, 1, (int) ne, m.GU,
+                                                                                      1280, m.cs);
+                                swiglu_split_f16(m.GU + o0 * 1280, m.Hh + o0 * 640, ne, 640, false, m.cs);
+                                pt.mark(kPfGemmD, cs);
+                                const bool ok2 = strata::kernels::gemm_iq_f16_grouped(42, blob_dev + f.down_off, 0, (int) N, 640,
+                                                                                      m.Hh, 640, dpairs + 2 * e, 1, (int) ne,
+                                                                                      m.Dm, (int) N, m.cs);
+                                if (slot >= 0) { cudaEventRecord(m.used[slot], m.cs); m.used_of[slot] = slot; }
+                                if (!ok1 || !ok2) { err = "prefill: STRATA_PF_WMMA launch failed"; return false; }
+                                return true;
+                            }
                             const int q = (int) (j % DQ);
                             if (lay.native) {
                                 // plan v0.3 P6: a native pack's layer, dequantized by llama.cpp's own formulas
