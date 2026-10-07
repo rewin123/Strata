@@ -3618,19 +3618,20 @@ void native_expert_grouped(const NativeExpertLayout& L, const unsigned long long
 #include <mma.h>
 namespace strata::kernels {
 namespace {
-constexpr int WG_BM = 64, WG_BN = 64, WG_THREADS = 256;
-// BK: 256 (gate/up, one superblock per row per step through dq_dispatch) or 128 (Q2_0 down, two 64-value blocks)
-template<int BK, bool Q20>
+constexpr int WG_BM = 64, WG_BN = 128, WG_THREADS = 256, WG_XK = 128;
+// The weight tile is BN rows x WK values (WK 256: an IQ superblock through dq_dispatch; WK 128: two Q2_0 blocks),
+// the activation tile BM rows x 128 values (two of them per IQ superblock).  8 warps of 32 x 32 (2 x 2 fragments).
+template<int WK, bool Q20>
 __global__ void __launch_bounds__(WG_THREADS) gemm_iq_f16_grouped_kernel(int ty, const uint8_t* __restrict__ W,
                                                                          size_t expert_bytes, size_t row_bytes, int K,
                                                                          const __half* __restrict__ X, int ldx,
                                                                          const int32_t* __restrict__ bounds, int mt_per_e,
                                                                          float* __restrict__ Y, int ldy) {
     using namespace nvcuda;
-    constexpr int LDS = BK + 8;
+    constexpr int LDW = WK + 8, LDX = WG_XK + 8;
     extern __shared__ __align__(16) unsigned char wg_smem[];
-    __half* sx = reinterpret_cast<__half*>(wg_smem);           // [BM][LDS]
-    __half* sw = sx + WG_BM * LDS;                               // [BN][LDS]
+    __half* sw = reinterpret_cast<__half*>(wg_smem);            // [BN][LDW]
+    __half* sx = sw + WG_BN * LDW;                               // [BM][LDX]
     const int e = blockIdx.y / mt_per_e, mt = blockIdx.y % mt_per_e;
     const int r0 = bounds[e] + mt * WG_BM, r1 = bounds[e + 1];
     if (r0 >= r1) return;
@@ -3638,81 +3639,97 @@ __global__ void __launch_bounds__(WG_THREADS) gemm_iq_f16_grouped_kernel(int ty,
     const int n0 = blockIdx.x * WG_BN;
     const uint8_t* we = W + (size_t) e * expert_bytes;
     const int tid = threadIdx.x, warp = tid >> 5, lane = tid & 31;
-    const int wm = warp >> 1, wn = warp & 1;                     // warp tile: rows wm*16, cols wn*32 (2 fragments)
-    wmma::fragment<wmma::accumulator, 16, 16, 16, float> acc[2];
-    wmma::fill_fragment(acc[0], 0.0f);
-    wmma::fill_fragment(acc[1], 0.0f);
-    for (int k0 = 0; k0 < K; k0 += BK) {
-        // activations: rows x BK halves, 8 per uint4
-        for (int i = tid; i < WG_BM * (BK / 8); i += WG_THREADS) {
-            const int r = i / (BK / 8), c = (i % (BK / 8)) * 8;
-            uint4 v = make_uint4(0, 0, 0, 0);
-            if (r < rows) v = *reinterpret_cast<const uint4*>(X + (size_t) (r0 + r) * ldx + k0 + c);
-            *reinterpret_cast<uint4*>(sx + r * LDS + c) = v;
-        }
+    const int wm = warp >> 2, wn = warp & 3;                     // rows wm*32, cols wn*32
+    wmma::fragment<wmma::accumulator, 16, 16, 16, float> acc[2][2];
+#pragma unroll
+    for (int a = 0; a < 2; ++a)
+#pragma unroll
+        for (int b = 0; b < 2; ++b) wmma::fill_fragment(acc[a][b], 0.0f);
+    for (int k0 = 0; k0 < K; k0 += WK) {
         if constexpr (!Q20) {
             for (int r = warp; r < WG_BN; r += WG_THREADS / 32)
-                dq_dispatch<__half>(ty, we + (size_t) (n0 + r) * row_bytes, k0 / 256, sw + r * LDS, lane);
+                dq_dispatch<__half>(ty, we + (size_t) (n0 + r) * row_bytes, k0 / 256, sw + r * LDW, lane);
         } else {
-            for (int i = tid; i < WG_BN * BK; i += WG_THREADS) {
-                const int r = i / BK, c = i % BK, k = k0 + c;
-                const block_q2_0* b = reinterpret_cast<const block_q2_0*>(we + (size_t) (n0 + r) * row_bytes) + k / 64;
-                const int kk = k % 64;
-                const int code = (b->qs[kk / 4] >> ((kk % 4) * 2)) & 3;
-                sw[r * LDS + c] = __float2half((float) b->d * (float) (code - 1));
+            // one thread per (row, 64-value block): the scale once, 16 code bytes, 64 halves
+            const int r = tid >> 1, blk = tid & 1;
+            const block_q2_0* b = reinterpret_cast<const block_q2_0*>(we + (size_t) (n0 + r) * row_bytes) + k0 / 64 + blk;
+            const float d = (float) b->d;
+            uint4 q4;
+            memcpy(&q4, b->qs, 16);
+            const uint8_t* qb = reinterpret_cast<const uint8_t*>(&q4);
+            __half* o = sw + r * LDW + blk * 64;
+#pragma unroll
+            for (int c = 0; c < 16; ++c) {
+                const int v = qb[c];
+                __half2 h01 = __floats2half2_rn(d * (float) ((v & 3) - 1), d * (float) (((v >> 2) & 3) - 1));
+                __half2 h23 = __floats2half2_rn(d * (float) (((v >> 4) & 3) - 1), d * (float) (((v >> 6) & 3) - 1));
+                *reinterpret_cast<__half2*>(o + 4 * c) = h01;
+                *reinterpret_cast<__half2*>(o + 4 * c + 2) = h23;
             }
         }
-        __syncthreads();
-#pragma unroll
-        for (int kk = 0; kk < BK; kk += 16) {
-            wmma::fragment<wmma::matrix_a, 16, 16, 16, __half, wmma::row_major> a;
-            wmma::load_matrix_sync(a, sx + (wm * 16) * LDS + kk, LDS);
-#pragma unroll
-            for (int f = 0; f < 2; ++f) {
-                wmma::fragment<wmma::matrix_b, 16, 16, 16, __half, wmma::col_major> b;
-                wmma::load_matrix_sync(b, sw + (wn * 32 + f * 16) * LDS + kk, LDS);
-                wmma::mma_sync(acc[f], a, b, acc[f]);
+#pragma unroll 1
+        for (int xh = 0; xh < WK / WG_XK; ++xh) {
+            for (int i = tid; i < WG_BM * (WG_XK / 8); i += WG_THREADS) {
+                const int r = i / (WG_XK / 8), c = (i % (WG_XK / 8)) * 8;
+                uint4 v = make_uint4(0, 0, 0, 0);
+                if (r < rows) v = *reinterpret_cast<const uint4*>(X + (size_t) (r0 + r) * ldx + k0 + xh * WG_XK + c);
+                *reinterpret_cast<uint4*>(sx + r * LDX + c) = v;
             }
+            __syncthreads();
+#pragma unroll
+            for (int kk = 0; kk < WG_XK; kk += 16) {
+                wmma::fragment<wmma::matrix_a, 16, 16, 16, __half, wmma::row_major> a[2];
+                wmma::fragment<wmma::matrix_b, 16, 16, 16, __half, wmma::col_major> b[2];
+#pragma unroll
+                for (int f = 0; f < 2; ++f) {
+                    wmma::load_matrix_sync(a[f], sx + (wm * 32 + f * 16) * LDX + kk, LDX);
+                    wmma::load_matrix_sync(b[f], sw + (wn * 32 + f * 16) * LDW + xh * WG_XK + kk, LDW);
+                }
+#pragma unroll
+                for (int fa = 0; fa < 2; ++fa)
+#pragma unroll
+                    for (int fb = 0; fb < 2; ++fb) wmma::mma_sync(acc[fa][fb], a[fa], b[fb], acc[fa][fb]);
+            }
+            __syncthreads();
         }
-        __syncthreads();
     }
-    // out: through shared memory (the tile's FP32, reusing the operands' space), rows < rows only
     float* so = reinterpret_cast<float*>(wg_smem);               // [BM][BN + 4]
     constexpr int LDO = WG_BN + 4;
 #pragma unroll
-    for (int f = 0; f < 2; ++f)
-        wmma::store_matrix_sync(so + (wm * 16) * LDO + wn * 32 + f * 16, acc[f], LDO, wmma::mem_row_major);
+    for (int fa = 0; fa < 2; ++fa)
+#pragma unroll
+        for (int fb = 0; fb < 2; ++fb)
+            wmma::store_matrix_sync(so + (wm * 32 + fa * 16) * LDO + wn * 32 + fb * 16, acc[fa][fb], LDO, wmma::mem_row_major);
     __syncthreads();
-    for (int i = tid; i < rows * WG_BN; i += WG_THREADS) {
-        const int r = i / WG_BN, c = i % WG_BN;
-        Y[(size_t) (r0 + r) * ldy + n0 + c] = so[r * LDO + c];
+    for (int i = tid; i < rows * (WG_BN / 4); i += WG_THREADS) {
+        const int r = i / (WG_BN / 4), c = (i % (WG_BN / 4)) * 4;
+        *reinterpret_cast<float4*>(Y + (size_t) (r0 + r) * ldy + n0 + c) = *reinterpret_cast<const float4*>(so + r * LDO + c);
     }
 }
 }  // namespace
 
 bool gemm_iq_f16_grouped(int ty, const void* W, size_t expert_bytes, int n_out, int K, const void* X, int ldx,
                          const int32_t* bounds, int n_experts, int max_rows, float* Y, int ldy, void* stream) {
-    if (n_out % WG_BN != 0 || n_experts <= 0 || max_rows <= 0) return false;
+    if (n_out % WG_BN != 0 || n_experts <= 0 || max_rows <= 0 || ldy % 4 != 0) return false;
     const bool q20 = ty == 42;
     if (q20 ? K % 128 != 0 : (K % 256 != 0 || !is_iq(ty))) return false;
     const size_t row_bytes = iq_row_bytes(ty, K);
     const int mt = (max_rows + WG_BM - 1) / WG_BM;
     const dim3 grid((unsigned) (n_out / WG_BN), (unsigned) (n_experts * mt));
     cudaStream_t s = (cudaStream_t) stream;
-    if (q20) {
-        constexpr size_t sm = (size_t) 2 * WG_BM * (128 + 8) * sizeof(__half);
-        gemm_iq_f16_grouped_kernel<128, true><<<grid, WG_THREADS, sm, s>>>(ty, (const uint8_t*) W, expert_bytes, row_bytes, K,
-                                                                          (const __half*) X, ldx, bounds, mt, Y, ldy);
-    } else {
-        constexpr size_t sm = (size_t) 2 * WG_BM * (256 + 8) * sizeof(__half);
-        static bool attr = false;
-        if (!attr) {
-            cudaFuncSetAttribute(gemm_iq_f16_grouped_kernel<256, false>, cudaFuncAttributeMaxDynamicSharedMemorySize, (int) sm);
-            attr = true;
-        }
-        gemm_iq_f16_grouped_kernel<256, false><<<grid, WG_THREADS, sm, s>>>(ty, (const uint8_t*) W, expert_bytes, row_bytes, K,
-                                                                           (const __half*) X, ldx, bounds, mt, Y, ldy);
+    auto smem = [](int wk) { return (size_t) WG_BN * (wk + 8) * 2 + (size_t) WG_BM * (WG_XK + 8) * 2; };
+    static bool attr = false;
+    if (!attr) {
+        cudaFuncSetAttribute(gemm_iq_f16_grouped_kernel<256, false>, cudaFuncAttributeMaxDynamicSharedMemorySize, (int) smem(256));
+        cudaFuncSetAttribute(gemm_iq_f16_grouped_kernel<128, true>, cudaFuncAttributeMaxDynamicSharedMemorySize, (int) smem(128));
+        attr = true;
     }
+    if (q20)
+        gemm_iq_f16_grouped_kernel<128, true><<<grid, WG_THREADS, smem(128), s>>>(ty, (const uint8_t*) W, expert_bytes, row_bytes, K,
+                                                                                 (const __half*) X, ldx, bounds, mt, Y, ldy);
+    else
+        gemm_iq_f16_grouped_kernel<256, false><<<grid, WG_THREADS, smem(256), s>>>(ty, (const uint8_t*) W, expert_bytes, row_bytes, K,
+                                                                                  (const __half*) X, ldx, bounds, mt, Y, ldy);
     return cudaGetLastError() == cudaSuccess;
 }
 }  // namespace strata::kernels
