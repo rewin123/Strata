@@ -1238,6 +1238,27 @@ __global__ void __launch_bounds__(128) swiglu_il_scaled_kernel(const float* __re
     for (int q = 0; q < 5; ++q) h16[r * 640 + t + 128 * q] = hf_sat(e ? h[q] * sc : h[q]);
     if (t == 0) inv[r] = ldexpf(1.0f, e);
 }
+// EXPERIMENT STRATA_PF16_Q8RT: the FP16 path's activations through q8_1 (32-value blocks, d = amax / 127, roundf),
+// as MMQ sees them, then FP16.  One warp per 32-value block.
+__global__ void q8rt_f16_kernel(const float* __restrict__ x, uint16_t* __restrict__ y, int64_t nblk) {
+    const int64_t b = ((int64_t) blockIdx.x * blockDim.x + threadIdx.x) >> 5;
+    const int lane = threadIdx.x & 31;
+    if (b >= nblk) return;
+    const float v = x[b * 32 + lane];
+    float amax = fabsf(v);
+#pragma unroll
+    for (int o = 16; o > 0; o >>= 1) amax = fmaxf(amax, __shfl_xor_sync(0xffffffffu, amax, o));
+    const float d = amax / 127.0f;
+    const float q = amax == 0.0f ? 0.0f : roundf(v / d);
+    y[b * 32 + lane] = hf_sat(q * d);
+}
+__global__ void swiglu_il_f32_kernel(const float* __restrict__ gu, float* __restrict__ h, int64_t n) {
+    const int64_t i = (int64_t) blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= n * 640) return;
+    const int64_t r = i / 640, k = i % 640;
+    const float g = gu[r * 1280 + 2 * k], u = gu[r * 1280 + 2 * k + 1];
+    h[i] = g / (1.0f + __expf(-g)) * u;
+}
 __global__ void scale_rows_inv_kernel(float* __restrict__ y, const float* __restrict__ inv, int64_t n, int64_t cols) {
     const int64_t i = (int64_t) blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n * cols) return;
@@ -1709,6 +1730,16 @@ void swiglu_interleaved_scaled(const float* gu, uint16_t* h16, float* inv, int64
     if (n <= 0) return;
     swiglu_il_scaled_kernel<<<(unsigned) n, 128, 0, (cudaStream_t) stream>>>(gu, h16, inv);
     check("swiglu_interleaved_scaled");
+}
+void q8rt_f16(const float* x, uint16_t* y, int64_t n, void* stream) {
+    if (n <= 0) return;
+    q8rt_f16_kernel<<<blocks_for(n), 256, 0, (cudaStream_t) stream>>>(x, y, n / 32);
+    check("q8rt_f16");
+}
+void swiglu_il_f32(const float* gu, float* h, int64_t n, void* stream) {
+    if (n <= 0) return;
+    swiglu_il_f32_kernel<<<blocks_for(n * 640), 256, 0, (cudaStream_t) stream>>>(gu, h, n);
+    check("swiglu_il_f32");
 }
 void scale_rows_inv(float* y, const float* inv, int64_t n, int64_t cols, void* stream) {
     if (n <= 0) return;

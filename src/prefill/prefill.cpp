@@ -2948,7 +2948,17 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                                                 cudaMemcpyHostToDevice, m.cs);
                             }
                         } else {
-                            gather_rows16(m.mixed_h, m.src_dev, m.Xs, T * K, N, m.cs);
+                            {
+                                static const bool q8rt = std::getenv("STRATA_PF16_Q8RT") != nullptr;
+                                static uint16_t* rt = nullptr;
+                                static int64_t rt_n = 0;
+                                if (q8rt) {
+                                    if (rt_n < T * N) { if (rt) cudaFree(rt); cudaMalloc(&rt, (size_t) T * N * 2); rt_n = T * N; }
+                                    q8rt_f16(m.mixed, rt, T * N, m.cs);
+                                    gather_rows16(rt, m.src_dev, m.Xs, T * K, N, m.cs);
+                                } else
+                                gather_rows16(m.mixed_h, m.src_dev, m.Xs, T * K, N, m.cs);
+                            }
                         }
                         // multi-GPU: the peer's share, enqueued before the primary's own experts so both cards work at once
                         peer_now = use_mmq && !order_peer.empty();
@@ -3305,10 +3315,15 @@ bool Prefill::run_impl(const int64_t* tokens, int64_t n, int64_t pos0, std::stri
                             const int64_t o0 = m.off[(size_t) e], ne = m.cnt[(size_t) e];
                             pt.mark(kPfGemmGU, cs);
                             m.gemm.f16(m.Xs + o0 * N, m.dq_gu[q], m.GU + o0 * 1280, ne, 1280, N);
+                            static const bool q8rt_h = std::getenv("STRATA_PF16_Q8RT") != nullptr;
+                            if (q8rt_h) {   // EXPERIMENT: H through q8_1 as MMQ (Dm's rows hold h first)
+                                swiglu_il_f32(m.GU + o0 * 1280, m.Dm + o0 * N, ne, m.cs);
+                                q8rt_f16(m.Dm + o0 * N, m.Hh + o0 * 640, ne * 640, m.cs);
+                            } else
                             swiglu_interleaved_scaled(m.GU + o0 * 1280, m.Hh + o0 * 640, m.Hinv + o0, ne, m.cs);
                             pt.mark(kPfGemmD, cs);
                             m.gemm.f16(m.Hh + o0 * 640, m.dq_d[q], m.Dm + o0 * N, ne, N, 640);
-                            scale_rows_inv(m.Dm + o0 * N, m.Hinv + o0, ne, N, m.cs);
+                            if (!q8rt_h) scale_rows_inv(m.Dm + o0 * N, m.Hinv + o0, ne, N, m.cs);
                             return true;
                         };
                         if (!stream_all) {
