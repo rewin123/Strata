@@ -1,0 +1,524 @@
+### native_grouped_parity SM70=0: env STRATA_SM70_TABLE=0 build-dev/native_grouped_parity --bench
+IQ2_XXS /IQ4_NL    512 x  256  84 calls: bitwise equal to v1 (76800 output floats written in all)
+IQ2_XXS /IQ4_XS    512 x  256  84 calls: bitwise equal to v1 (83968 output floats written in all)
+IQ2_XXS /Q2_0      512 x  256  84 calls: bitwise equal to v1 (80384 output floats written in all)
+IQ2_XXS /Q5_1      512 x  256  84 calls: bitwise equal to v1 (80384 output floats written in all)
+IQ2_XXS /Q8_0      512 x  256  84 calls: bitwise equal to v1 (80896 output floats written in all)
+IQ2_XS  /IQ4_NL    512 x  256  84 calls: bitwise equal to v1 (80896 output floats written in all)
+IQ2_XS  /IQ4_XS    512 x  256  84 calls: bitwise equal to v1 (83968 output floats written in all)
+IQ2_XS  /Q2_0      512 x  256  84 calls: bitwise equal to v1 (80896 output floats written in all)
+IQ2_XS  /Q5_1      512 x  256  84 calls: bitwise equal to v1 (75776 output floats written in all)
+IQ2_XS  /Q8_0      512 x  256  84 calls: bitwise equal to v1 (80384 output floats written in all)
+IQ3_XXS /IQ4_NL    512 x  256  84 calls: bitwise equal to v1 (78336 output floats written in all)
+IQ3_XXS /IQ4_XS    512 x  256  84 calls: bitwise equal to v1 (80384 output floats written in all)
+IQ3_XXS /Q2_0      512 x  256  84 calls: bitwise equal to v1 (76288 output floats written in all)
+IQ3_XXS /Q5_1      512 x  256  84 calls: bitwise equal to v1 (77312 output floats written in all)
+IQ3_XXS /Q8_0      512 x  256  84 calls: bitwise equal to v1 (76288 output floats written in all)
+IQ3_S   /IQ4_NL    512 x  256  84 calls: bitwise equal to v1 (79360 output floats written in all)
+IQ3_S   /IQ4_XS    512 x  256  84 calls: bitwise equal to v1 (79872 output floats written in all)
+IQ3_S   /Q2_0      512 x  256  84 calls: bitwise equal to v1 (77824 output floats written in all)
+IQ3_S   /Q5_1      512 x  256  84 calls: bitwise equal to v1 (87552 output floats written in all)
+IQ3_S   /Q8_0      512 x  256  84 calls: bitwise equal to v1 (83968 output floats written in all)
+IQ2_S   /IQ4_NL    512 x  256  84 calls: bitwise equal to v1 (80896 output floats written in all)
+IQ2_S   /IQ4_XS    512 x  256  84 calls: bitwise equal to v1 (79360 output floats written in all)
+IQ2_S   /Q2_0      512 x  256  84 calls: bitwise equal to v1 (75776 output floats written in all)
+IQ2_S   /Q5_1      512 x  256  84 calls: bitwise equal to v1 (81920 output floats written in all)
+IQ2_S   /Q8_0      512 x  256  84 calls: bitwise equal to v1 (82944 output floats written in all)
+IQ4_XS  /IQ4_NL    512 x  256  84 calls: bitwise equal to v1 (79872 output floats written in all)
+IQ4_XS  /IQ4_XS    512 x  256  84 calls: bitwise equal to v1 (82432 output floats written in all)
+IQ4_XS  /Q2_0      512 x  256  84 calls: bitwise equal to v1 (84992 output floats written in all)
+IQ4_XS  /Q5_1      512 x  256  84 calls: bitwise equal to v1 (80384 output floats written in all)
+IQ4_XS  /Q8_0      512 x  256  84 calls: bitwise equal to v1 (74752 output floats written in all)
+IQ1_M   /IQ4_NL    512 x  256  84 calls: bitwise equal to v1 (81408 output floats written in all)
+IQ1_M   /IQ4_XS    512 x  256  84 calls: bitwise equal to v1 (81920 output floats written in all)
+IQ1_M   /Q2_0      512 x  256  84 calls: bitwise equal to v1 (74752 output floats written in all)
+IQ1_M   /Q5_1      512 x  256  84 calls: bitwise equal to v1 (78336 output floats written in all)
+IQ1_M   /Q8_0      512 x  256  84 calls: bitwise equal to v1 (83968 output floats written in all)
+Q2_0    /IQ4_NL    512 x  256  84 calls: bitwise equal to v1 (83456 output floats written in all)
+Q2_0    /IQ4_XS    512 x  256  84 calls: bitwise equal to v1 (73216 output floats written in all)
+Q2_0    /Q2_0      512 x  256  84 calls: bitwise equal to v1 (82944 output floats written in all)
+Q2_0    /Q5_1      512 x  256  84 calls: bitwise equal to v1 (80384 output floats written in all)
+Q2_0    /Q8_0      512 x  256  84 calls: bitwise equal to v1 (79872 output floats written in all)
+Q4_K    /IQ4_NL    512 x  256  84 calls: bitwise equal to v1 (77312 output floats written in all)
+Q4_K    /IQ4_XS    512 x  256  84 calls: bitwise equal to v1 (73216 output floats written in all)
+Q4_K    /Q2_0      512 x  256  84 calls: bitwise equal to v1 (73728 output floats written in all)
+Q4_K    /Q5_1      512 x  256  84 calls: bitwise equal to v1 (75776 output floats written in all)
+Q4_K    /Q8_0      512 x  256  84 calls: bitwise equal to v1 (86016 output floats written in all)
+Q5_K    /IQ4_NL    512 x  256  84 calls: bitwise equal to v1 (69632 output floats written in all)
+Q5_K    /IQ4_XS    512 x  256  84 calls: bitwise equal to v1 (78848 output floats written in all)
+Q5_K    /Q2_0      512 x  256  84 calls: bitwise equal to v1 (76800 output floats written in all)
+Q5_K    /Q5_1      512 x  256  84 calls: bitwise equal to v1 (84480 output floats written in all)
+Q5_K    /Q8_0      512 x  256  84 calls: bitwise equal to v1 (74240 output floats written in all)
+Q8_0    /IQ4_NL    512 x  256  84 calls: bitwise equal to v1 (75264 output floats written in all)
+Q8_0    /IQ4_XS    512 x  256  84 calls: bitwise equal to v1 (81920 output floats written in all)
+Q8_0    /Q2_0      512 x  256  84 calls: bitwise equal to v1 (71680 output floats written in all)
+Q8_0    /Q5_1      512 x  256  84 calls: bitwise equal to v1 (78848 output floats written in all)
+Q8_0    /Q8_0      512 x  256  84 calls: bitwise equal to v1 (80896 output floats written in all)
+IQ3_S   /IQ4_NL   2560 x  640  84 calls: bitwise equal to v1 (399360 output floats written in all)
+IQ3_S   /IQ4_XS   2560 x  768  84 calls: bitwise equal to v1 (409600 output floats written in all)
+
+--bench: microseconds per call, a window's 48 calls in a graph, each layer with its own experts (the
+weights stream from DRAM as in the engine); v1 / new (grid_groups): medians of 40 launches each,
+alternating, after 20 warm-up pairs - idle GPU assumed
+  no group (the PCIe call at pcie_frac 0)       35.22 /     7.72 us (grid_groups 4)
+  1 group of 2 entries (a PCIe call)            42.43 /    22.59 us (grid_groups 4)
+  28 groups, 40 entries (a VRAM call)          230.23 /   227.75 us (grid_groups 0)
+native_grouped_parity: 0 failures
+exit 0
+### mmvq_il_parity SM70=0: env STRATA_SM70_TABLE=0 build-dev/mmvq_il_parity
+mmvq_il_parity: OK (every case, T 2-4, rows 1/2/4 and the table, bitwise)
+exit 0
+### mmvq_multi_parity SM70=0: env STRATA_SM70_TABLE=0 build-dev/mmvq_multi_parity
+
+=== multi_exact ON (the default) ===
+type           T    outputs  bits diff    finite diff  nonfinite
+Q4_0           1        512          0              0          0  ok
+Q4_0           2       1024          0              0          0  ok
+Q4_0           3       1536          0              0          0  ok
+Q4_0           4       2048          0              0          0  ok
+Q4_0           5       2560          0              0          0  ok
+Q4_0           6       3072          0              0          0  ok
+Q4_0           8       4096          0              0          0  ok
+Q8_0           1        512          0              0          0  ok
+Q8_0           2       1024          0              0          0  ok
+Q8_0           3       1536          0              0          0  ok
+Q8_0           4       2048          0              0          0  ok
+Q8_0           5       2560          0              0          0  ok
+Q8_0           6       3072          0              0          0  ok
+Q8_0           8       4096          0              0          0  ok
+Q4_K           1        512          0              0          0  ok
+Q4_K           2       1024          0              0          0  ok
+Q4_K           3       1536          0              0          0  ok
+Q4_K           4       2048          0              0          0  ok
+Q4_K           5       2560          0              0          0  ok
+Q4_K           6       3072          0              0          0  ok
+Q4_K           8       4096          0              0          0  ok
+Q5_K           1        512          0              0          0  ok
+Q5_K           2       1024          0              0          0  ok
+Q5_K           3       1536          0              0          0  ok
+Q5_K           4       2048          0              0          0  ok
+Q5_K           5       2560          0              0          0  ok
+Q5_K           6       3072          0              0          0  ok
+Q5_K           8       4096          0              0          0  ok
+Q6_K           1        512          0              0          0  ok
+Q6_K           2       1024          0              0          0  ok
+Q6_K           3       1536          0              0          0  ok
+Q6_K           4       2048          0              0          0  ok
+Q6_K           5       2560          0              0          0  ok
+Q6_K           6       3072          0              0          0  ok
+Q6_K           8       4096          0              0          0  ok
+IQ4_XS         1        512          0              0          0  ok
+IQ4_XS         2       1024          0              0          0  ok
+IQ4_XS         3       1536          0              0          0  ok
+IQ4_XS         4       2048          0              0          0  ok
+IQ4_XS         5       2560          0              0          0  ok
+IQ4_XS         6       3072          0              0          0  ok
+IQ4_XS         8       4096          0              0          0  ok
+Q5_K wide      1       2048          0              0          0  ok
+Q5_K wide      2       4096          0              0          0  ok
+Q5_K wide      3       6144          0              0          0  ok
+Q5_K wide      4       8192          0              0          0  ok
+Q5_K wide      5      10240          0              0          0  ok
+Q5_K wide      6      12288          0              0          0  ok
+Q5_K wide      8      16384          0              0          0  ok
+
+=== multi_exact off (negative control) ===
+type           T    outputs  bits diff    finite diff  nonfinite
+Q4_0           1        512          0              0          0  layouts coincide here (NW = 4)
+Q4_0           2       1024          0              0          0  layouts coincide here (NW = 4)
+Q4_0           3       1536          0              0          0  layouts coincide here (NW = 4)
+Q4_0           4       2048          0              0          0  layouts coincide here (NW = 4)
+Q4_0           5       2560       1746           1746          0  control sees it
+Q4_0           6       3072       2110           2110          0  control sees it
+Q4_0           8       4096       2795           2795          0  control sees it
+Q8_0           1        512          0              0          0  layouts coincide here (NW = 4)
+Q8_0           2       1024          0              0          0  layouts coincide here (NW = 4)
+Q8_0           3       1536          0              0          0  layouts coincide here (NW = 4)
+Q8_0           4       2048          0              0          0  layouts coincide here (NW = 4)
+Q8_0           5       2560       1713           1713          0  control sees it
+Q8_0           6       3072       2085           2085          0  control sees it
+Q8_0           8       4096       2770           2770          0  control sees it
+Q4_K           1        512          0              0          0  layouts coincide here (NW = 4)
+Q4_K           2       1024          0              0          0  layouts coincide here (NW = 4)
+Q4_K           3       1536          0              0          0  layouts coincide here (NW = 4)
+Q4_K           4       2048          0              0          0  layouts coincide here (NW = 4)
+Q4_K           5       2560       1490           1490          0  control sees it
+Q4_K           6       3072       1885           1885          0  control sees it
+Q4_K           8       4096       2484           2484          0  control sees it
+Q5_K           1        512          0              0          0  layouts coincide here (NW = 4)
+Q5_K           2       1024          0              0          0  layouts coincide here (NW = 4)
+Q5_K           3       1536          0              0          0  layouts coincide here (NW = 4)
+Q5_K           4       2048          0              0          0  layouts coincide here (NW = 4)
+Q5_K           5       2560       1503           1503          0  control sees it
+Q5_K           6       3072       1840           1840          0  control sees it
+Q5_K           8       4096       2510           2510          0  control sees it
+Q6_K           1        512          0              0          0  layouts coincide here (NW = 4)
+Q6_K           2       1024          0              0          0  layouts coincide here (NW = 4)
+Q6_K           3       1536          0              0          0  layouts coincide here (NW = 4)
+Q6_K           4       2048          0              0          0  layouts coincide here (NW = 4)
+Q6_K           5       2560       1731           1731          0  control sees it
+Q6_K           6       3072       2079           2079          0  control sees it
+Q6_K           8       4096       2798           2798          0  control sees it
+IQ4_XS         1        512          0              0          0  layouts coincide here (NW = 4)
+IQ4_XS         2       1024          0              0          0  layouts coincide here (NW = 4)
+IQ4_XS         3       1536          0              0          0  layouts coincide here (NW = 4)
+IQ4_XS         4       2048          0              0          0  layouts coincide here (NW = 4)
+IQ4_XS         5       2560       1598           1598          0  control sees it
+IQ4_XS         6       3072       1924           1924          0  control sees it
+IQ4_XS         8       4096       2515           2515          0  control sees it
+Q5_K wide      1       2048          0              0          0  layouts coincide here (NW = 4)
+Q5_K wide      2       4096          0              0          0  layouts coincide here (NW = 4)
+Q5_K wide      3       6144          0              0          0  layouts coincide here (NW = 4)
+Q5_K wide      4       8192          0              0          0  layouts coincide here (NW = 4)
+Q5_K wide      5      10240       6976           6976          0  control sees it
+Q5_K wide      6      12288       8068           8068          0  control sees it
+Q5_K wide      8      16384      11210          11210          0  control sees it
+
+multi_exact on:   148480 outputs compared, 0 differ bitwise, 0 non-finite
+multi_exact off:  148480 outputs compared, 63830 differ bitwise (63830 on finite outputs, 63830 at T > 4)
+
+mmvq_multi_parity: ok. With multi_exact on every column is bitwise equal to a single-column call; with it off the control finds differences at T > 4 in every case, so the comparison has power.
+exit 0
+### gr_multi_parity SM70=0: env STRATA_SM70_TABLE=0 build-dev/gr_multi_parity
+gr_multi: 32 cases, 0 failures
+gr_multi_parity OK
+exit 0
+### gr_parity SM70=0: env STRATA_SM70_TABLE=0 build-dev/gr_parity
+  per-stream RMSNorm vs whole-stack        yes  (89.6091% apart, floor 5.000%)
+  /hc inside the silu vs outside           yes  (8.1439% apart, floor 5.000%)
+  SiLU on lo / sigmoid on gate, swapped    yes  (91.4869% apart, floor 5.000%)
+  mean over streams vs sum                 yes  (300.0000% apart, floor 50.000%)
+  BF16 vs FP32 activation contracts        yes  (0.1028% apart, floor 0.010%)
+
+  mixed vs reference                       worst 3.594e-08 (mean |ref| 0.2105)
+  inject vs reference                      rel 2.845e-08
+  FP32 activations vs reference: pass (mixed 7.823e-08, inject 1.138e-07)
+  restoring default activation contract: byte-identical
+  weight orientation is observable         yes (56.9% apart)
+  null w_inject writes nothing             yes
+  zero injection -> plain residual add     yes (worst rel 5.948e-08)
+  1*sigmoid vs 2*sigmoid is observable     yes (readings 50% apart, kernel within 4.36e-07)
+  every stream adds the same block output  yes (worst rel 1.033e-07)
+
+  real dims 2560/4/320 BF16 pass (mixed 7.056e-08, inject 1.986e-07)
+
+  real dims 2560/4/320 FP32 pass (mixed 1.620e-07, inject 2.817e-07)
+
+  real dims 2560/4/320 native pinned GR pass (mixed 1.669e-07, inject 1.359e-07)
+  fused GR read + q8_1 (STRATA_QFUSE), T 1..8, direct and graph replays: pass
+  fused GR multi max-T=8 LDS launch and changing graph replay pass
+  scalar gamma 1.00000000 BF16 activation/capture pass (mixed 0.614394009, ref 0.614394009)
+  scalar final mixer BF16 pass
+  scalar gamma 1.00000000 FP32 activation/capture pass (mixed 0.614636600, ref 0.614636600)
+  scalar final mixer FP32 pass
+  scalar gamma 1.00000000 native pinned GR activation/capture pass (mixed 0.614636600, ref 0.614636600)
+  scalar final mixer native pinned GR pass
+  scalar gamma 1.00390625 BF16 activation/capture pass (mixed 0.616793990, ref 0.616793990)
+  scalar final mixer BF16 pass
+  scalar gamma 1.00390625 FP32 activation/capture pass (mixed 0.617553174, ref 0.617553174)
+  scalar final mixer FP32 pass
+  scalar gamma 1.00390625 native pinned GR activation/capture pass (mixed 0.617553174, ref 0.617553174)
+  scalar final mixer native pinned GR pass
+
+gr_read/gr_write: 0 failures
+exit 0
+### fused_gr_bench SM70=0: env STRATA_SM70_TABLE=0 build-dev/fused_gr_bench 300 1 4
+T 1 apply 0 inject 0 | old   55.5 us  fast   51.4 us | bitwise equal
+T 1 apply 0 inject 1 | old   55.4 us  fast   51.4 us | bitwise equal
+T 1 apply 1 inject 0 | old   53.5 us  fast   49.5 us | bitwise equal
+T 1 apply 1 inject 1 | old   51.5 us  fast   47.2 us | bitwise equal
+T 2 apply 0 inject 0 | old   56.5 us  fast   52.2 us | bitwise equal
+T 2 apply 0 inject 1 | old   56.4 us  fast   52.1 us | bitwise equal
+T 2 apply 1 inject 0 | old   59.1 us  fast   53.8 us | bitwise equal
+T 2 apply 1 inject 1 | old   59.1 us  fast   53.8 us | bitwise equal
+T 3 apply 0 inject 0 | old   62.2 us  fast   58.4 us | bitwise equal
+T 3 apply 0 inject 1 | old   62.2 us  fast   58.4 us | bitwise equal
+T 3 apply 1 inject 0 | old   65.0 us  fast   60.5 us | bitwise equal
+T 3 apply 1 inject 1 | old   65.0 us  fast   60.4 us | bitwise equal
+T 4 apply 0 inject 0 | old   69.0 us  fast   65.3 us | bitwise equal
+T 4 apply 0 inject 1 | old   69.0 us  fast   65.3 us | bitwise equal
+T 4 apply 1 inject 0 | old   72.1 us  fast   67.2 us | bitwise equal
+T 4 apply 1 inject 1 | old   72.1 us  fast   67.2 us | bitwise equal
+fused_gr_bench: 0 differing
+exit 0
+### fused_gr_bench staged SM70=0: env STRATA_SM70_TABLE=0 STRATA_HC_SPLIT=2 build-dev/fused_gr_bench 300 1 4
+T 1 apply 0 inject 0 | old   33.6 us  fast   32.2 us | bitwise equal
+T 1 apply 0 inject 1 | old   33.6 us  fast   32.2 us | bitwise equal
+T 1 apply 1 inject 0 | old   34.7 us  fast   33.2 us | bitwise equal
+T 1 apply 1 inject 1 | old   34.8 us  fast   33.3 us | bitwise equal
+T 2 apply 0 inject 0 | old   39.5 us  fast   36.9 us | bitwise equal
+T 2 apply 0 inject 1 | old   39.5 us  fast   36.8 us | bitwise equal
+T 2 apply 1 inject 0 | old   41.1 us  fast   38.0 us | bitwise equal
+T 2 apply 1 inject 1 | old   41.1 us  fast   37.9 us | bitwise equal
+T 3 apply 0 inject 0 | old   42.6 us  fast   40.5 us | bitwise equal
+T 3 apply 0 inject 1 | old   42.6 us  fast   40.4 us | bitwise equal
+T 3 apply 1 inject 0 | old   44.2 us  fast   41.9 us | bitwise equal
+T 3 apply 1 inject 1 | old   44.2 us  fast   41.9 us | bitwise equal
+T 4 apply 0 inject 0 | old   48.9 us  fast   47.0 us | bitwise equal
+T 4 apply 0 inject 1 | old   48.9 us  fast   46.9 us | bitwise equal
+T 4 apply 1 inject 0 | old   50.6 us  fast   48.2 us | bitwise equal
+T 4 apply 1 inject 1 | old   50.6 us  fast   48.1 us | bitwise equal
+fused_gr_bench: 0 differing
+exit 0
+### native_grouped_parity SM70=1: env STRATA_SM70_TABLE=1 build-dev/native_grouped_parity --bench
+IQ2_XXS /IQ4_NL    512 x  256  84 calls: bitwise equal to v1 (76800 output floats written in all)
+IQ2_XXS /IQ4_XS    512 x  256  84 calls: bitwise equal to v1 (83968 output floats written in all)
+IQ2_XXS /Q2_0      512 x  256  84 calls: bitwise equal to v1 (80384 output floats written in all)
+IQ2_XXS /Q5_1      512 x  256  84 calls: bitwise equal to v1 (80384 output floats written in all)
+IQ2_XXS /Q8_0      512 x  256  84 calls: bitwise equal to v1 (80896 output floats written in all)
+IQ2_XS  /IQ4_NL    512 x  256  84 calls: bitwise equal to v1 (80896 output floats written in all)
+IQ2_XS  /IQ4_XS    512 x  256  84 calls: bitwise equal to v1 (83968 output floats written in all)
+IQ2_XS  /Q2_0      512 x  256  84 calls: bitwise equal to v1 (80896 output floats written in all)
+IQ2_XS  /Q5_1      512 x  256  84 calls: bitwise equal to v1 (75776 output floats written in all)
+IQ2_XS  /Q8_0      512 x  256  84 calls: bitwise equal to v1 (80384 output floats written in all)
+IQ3_XXS /IQ4_NL    512 x  256  84 calls: bitwise equal to v1 (78336 output floats written in all)
+IQ3_XXS /IQ4_XS    512 x  256  84 calls: bitwise equal to v1 (80384 output floats written in all)
+IQ3_XXS /Q2_0      512 x  256  84 calls: bitwise equal to v1 (76288 output floats written in all)
+IQ3_XXS /Q5_1      512 x  256  84 calls: bitwise equal to v1 (77312 output floats written in all)
+IQ3_XXS /Q8_0      512 x  256  84 calls: bitwise equal to v1 (76288 output floats written in all)
+IQ3_S   /IQ4_NL    512 x  256  84 calls: bitwise equal to v1 (79360 output floats written in all)
+IQ3_S   /IQ4_XS    512 x  256  84 calls: bitwise equal to v1 (79872 output floats written in all)
+IQ3_S   /Q2_0      512 x  256  84 calls: bitwise equal to v1 (77824 output floats written in all)
+IQ3_S   /Q5_1      512 x  256  84 calls: bitwise equal to v1 (87552 output floats written in all)
+IQ3_S   /Q8_0      512 x  256  84 calls: bitwise equal to v1 (83968 output floats written in all)
+IQ2_S   /IQ4_NL    512 x  256  84 calls: bitwise equal to v1 (80896 output floats written in all)
+IQ2_S   /IQ4_XS    512 x  256  84 calls: bitwise equal to v1 (79360 output floats written in all)
+IQ2_S   /Q2_0      512 x  256  84 calls: bitwise equal to v1 (75776 output floats written in all)
+IQ2_S   /Q5_1      512 x  256  84 calls: bitwise equal to v1 (81920 output floats written in all)
+IQ2_S   /Q8_0      512 x  256  84 calls: bitwise equal to v1 (82944 output floats written in all)
+IQ4_XS  /IQ4_NL    512 x  256  84 calls: bitwise equal to v1 (79872 output floats written in all)
+IQ4_XS  /IQ4_XS    512 x  256  84 calls: bitwise equal to v1 (82432 output floats written in all)
+IQ4_XS  /Q2_0      512 x  256  84 calls: bitwise equal to v1 (84992 output floats written in all)
+IQ4_XS  /Q5_1      512 x  256  84 calls: bitwise equal to v1 (80384 output floats written in all)
+IQ4_XS  /Q8_0      512 x  256  84 calls: bitwise equal to v1 (74752 output floats written in all)
+IQ1_M   /IQ4_NL    512 x  256  84 calls: bitwise equal to v1 (81408 output floats written in all)
+IQ1_M   /IQ4_XS    512 x  256  84 calls: bitwise equal to v1 (81920 output floats written in all)
+IQ1_M   /Q2_0      512 x  256  84 calls: bitwise equal to v1 (74752 output floats written in all)
+IQ1_M   /Q5_1      512 x  256  84 calls: bitwise equal to v1 (78336 output floats written in all)
+IQ1_M   /Q8_0      512 x  256  84 calls: bitwise equal to v1 (83968 output floats written in all)
+Q2_0    /IQ4_NL    512 x  256  84 calls: bitwise equal to v1 (83456 output floats written in all)
+Q2_0    /IQ4_XS    512 x  256  84 calls: bitwise equal to v1 (73216 output floats written in all)
+Q2_0    /Q2_0      512 x  256  84 calls: bitwise equal to v1 (82944 output floats written in all)
+Q2_0    /Q5_1      512 x  256  84 calls: bitwise equal to v1 (80384 output floats written in all)
+Q2_0    /Q8_0      512 x  256  84 calls: bitwise equal to v1 (79872 output floats written in all)
+Q4_K    /IQ4_NL    512 x  256  84 calls: bitwise equal to v1 (77312 output floats written in all)
+Q4_K    /IQ4_XS    512 x  256  84 calls: bitwise equal to v1 (73216 output floats written in all)
+Q4_K    /Q2_0      512 x  256  84 calls: bitwise equal to v1 (73728 output floats written in all)
+Q4_K    /Q5_1      512 x  256  84 calls: bitwise equal to v1 (75776 output floats written in all)
+Q4_K    /Q8_0      512 x  256  84 calls: bitwise equal to v1 (86016 output floats written in all)
+Q5_K    /IQ4_NL    512 x  256  84 calls: bitwise equal to v1 (69632 output floats written in all)
+Q5_K    /IQ4_XS    512 x  256  84 calls: bitwise equal to v1 (78848 output floats written in all)
+Q5_K    /Q2_0      512 x  256  84 calls: bitwise equal to v1 (76800 output floats written in all)
+Q5_K    /Q5_1      512 x  256  84 calls: bitwise equal to v1 (84480 output floats written in all)
+Q5_K    /Q8_0      512 x  256  84 calls: bitwise equal to v1 (74240 output floats written in all)
+Q8_0    /IQ4_NL    512 x  256  84 calls: bitwise equal to v1 (75264 output floats written in all)
+Q8_0    /IQ4_XS    512 x  256  84 calls: bitwise equal to v1 (81920 output floats written in all)
+Q8_0    /Q2_0      512 x  256  84 calls: bitwise equal to v1 (71680 output floats written in all)
+Q8_0    /Q5_1      512 x  256  84 calls: bitwise equal to v1 (78848 output floats written in all)
+Q8_0    /Q8_0      512 x  256  84 calls: bitwise equal to v1 (80896 output floats written in all)
+IQ3_S   /IQ4_NL   2560 x  640  84 calls: bitwise equal to v1 (399360 output floats written in all)
+IQ3_S   /IQ4_XS   2560 x  768  84 calls: bitwise equal to v1 (409600 output floats written in all)
+
+--bench: microseconds per call, a window's 48 calls in a graph, each layer with its own experts (the
+weights stream from DRAM as in the engine); v1 / new (grid_groups): medians of 40 launches each,
+alternating, after 20 warm-up pairs - idle GPU assumed
+  no group (the PCIe call at pcie_frac 0)       21.59 /     5.78 us (grid_groups 4)
+  1 group of 2 entries (a PCIe call)            41.86 /    21.33 us (grid_groups 4)
+  28 groups, 40 entries (a VRAM call)          196.12 /   195.86 us (grid_groups 0)
+native_grouped_parity: 0 failures
+exit 0
+### mmvq_il_parity SM70=1: env STRATA_SM70_TABLE=1 build-dev/mmvq_il_parity
+mmvq_il_parity: OK (every case, T 2-4, rows 1/2/4 and the table, bitwise)
+exit 0
+### mmvq_multi_parity SM70=1: env STRATA_SM70_TABLE=1 build-dev/mmvq_multi_parity
+
+=== multi_exact ON (the default) ===
+type           T    outputs  bits diff    finite diff  nonfinite
+Q4_0           1        512          0              0          0  ok
+Q4_0           2       1024          0              0          0  ok
+Q4_0           3       1536          0              0          0  ok
+Q4_0           4       2048          0              0          0  ok
+Q4_0           5       2560          0              0          0  ok
+Q4_0           6       3072          0              0          0  ok
+Q4_0           8       4096          0              0          0  ok
+Q8_0           1        512          0              0          0  ok
+Q8_0           2       1024          0              0          0  ok
+Q8_0           3       1536          0              0          0  ok
+Q8_0           4       2048          0              0          0  ok
+Q8_0           5       2560          0              0          0  ok
+Q8_0           6       3072          0              0          0  ok
+Q8_0           8       4096          0              0          0  ok
+Q4_K           1        512          0              0          0  ok
+Q4_K           2       1024          0              0          0  ok
+Q4_K           3       1536          0              0          0  ok
+Q4_K           4       2048          0              0          0  ok
+Q4_K           5       2560          0              0          0  ok
+Q4_K           6       3072          0              0          0  ok
+Q4_K           8       4096          0              0          0  ok
+Q5_K           1        512          0              0          0  ok
+Q5_K           2       1024          0              0          0  ok
+Q5_K           3       1536          0              0          0  ok
+Q5_K           4       2048          0              0          0  ok
+Q5_K           5       2560          0              0          0  ok
+Q5_K           6       3072          0              0          0  ok
+Q5_K           8       4096          0              0          0  ok
+Q6_K           1        512          0              0          0  ok
+Q6_K           2       1024          0              0          0  ok
+Q6_K           3       1536          0              0          0  ok
+Q6_K           4       2048          0              0          0  ok
+Q6_K           5       2560          0              0          0  ok
+Q6_K           6       3072          0              0          0  ok
+Q6_K           8       4096          0              0          0  ok
+IQ4_XS         1        512          0              0          0  ok
+IQ4_XS         2       1024          0              0          0  ok
+IQ4_XS         3       1536          0              0          0  ok
+IQ4_XS         4       2048          0              0          0  ok
+IQ4_XS         5       2560          0              0          0  ok
+IQ4_XS         6       3072          0              0          0  ok
+IQ4_XS         8       4096          0              0          0  ok
+Q5_K wide      1       2048          0              0          0  ok
+Q5_K wide      2       4096          0              0          0  ok
+Q5_K wide      3       6144          0              0          0  ok
+Q5_K wide      4       8192          0              0          0  ok
+Q5_K wide      5      10240          0              0          0  ok
+Q5_K wide      6      12288          0              0          0  ok
+Q5_K wide      8      16384          0              0          0  ok
+
+=== multi_exact off (negative control) ===
+type           T    outputs  bits diff    finite diff  nonfinite
+Q4_0           1        512          0              0          0  layouts coincide here (NW = 4)
+Q4_0           2       1024          0              0          0  layouts coincide here (NW = 4)
+Q4_0           3       1536          0              0          0  layouts coincide here (NW = 4)
+Q4_0           4       2048          0              0          0  layouts coincide here (NW = 4)
+Q4_0           5       2560       1746           1746          0  control sees it
+Q4_0           6       3072       2110           2110          0  control sees it
+Q4_0           8       4096       2795           2795          0  control sees it
+Q8_0           1        512          0              0          0  layouts coincide here (NW = 4)
+Q8_0           2       1024          0              0          0  layouts coincide here (NW = 4)
+Q8_0           3       1536          0              0          0  layouts coincide here (NW = 4)
+Q8_0           4       2048          0              0          0  layouts coincide here (NW = 4)
+Q8_0           5       2560       1713           1713          0  control sees it
+Q8_0           6       3072       2085           2085          0  control sees it
+Q8_0           8       4096       2770           2770          0  control sees it
+Q4_K           1        512          0              0          0  layouts coincide here (NW = 4)
+Q4_K           2       1024          0              0          0  layouts coincide here (NW = 4)
+Q4_K           3       1536          0              0          0  layouts coincide here (NW = 4)
+Q4_K           4       2048          0              0          0  layouts coincide here (NW = 4)
+Q4_K           5       2560       1490           1490          0  control sees it
+Q4_K           6       3072       1885           1885          0  control sees it
+Q4_K           8       4096       2484           2484          0  control sees it
+Q5_K           1        512          0              0          0  layouts coincide here (NW = 4)
+Q5_K           2       1024          0              0          0  layouts coincide here (NW = 4)
+Q5_K           3       1536          0              0          0  layouts coincide here (NW = 4)
+Q5_K           4       2048          0              0          0  layouts coincide here (NW = 4)
+Q5_K           5       2560       1503           1503          0  control sees it
+Q5_K           6       3072       1840           1840          0  control sees it
+Q5_K           8       4096       2510           2510          0  control sees it
+Q6_K           1        512          0              0          0  layouts coincide here (NW = 4)
+Q6_K           2       1024          0              0          0  layouts coincide here (NW = 4)
+Q6_K           3       1536          0              0          0  layouts coincide here (NW = 4)
+Q6_K           4       2048          0              0          0  layouts coincide here (NW = 4)
+Q6_K           5       2560       1731           1731          0  control sees it
+Q6_K           6       3072       2079           2079          0  control sees it
+Q6_K           8       4096       2798           2798          0  control sees it
+IQ4_XS         1        512          0              0          0  layouts coincide here (NW = 4)
+IQ4_XS         2       1024          0              0          0  layouts coincide here (NW = 4)
+IQ4_XS         3       1536          0              0          0  layouts coincide here (NW = 4)
+IQ4_XS         4       2048          0              0          0  layouts coincide here (NW = 4)
+IQ4_XS         5       2560       1598           1598          0  control sees it
+IQ4_XS         6       3072       1924           1924          0  control sees it
+IQ4_XS         8       4096       2515           2515          0  control sees it
+Q5_K wide      1       2048          0              0          0  layouts coincide here (NW = 4)
+Q5_K wide      2       4096          0              0          0  layouts coincide here (NW = 4)
+Q5_K wide      3       6144          0              0          0  layouts coincide here (NW = 4)
+Q5_K wide      4       8192          0              0          0  layouts coincide here (NW = 4)
+Q5_K wide      5      10240       6976           6976          0  control sees it
+Q5_K wide      6      12288       8068           8068          0  control sees it
+Q5_K wide      8      16384      11210          11210          0  control sees it
+
+multi_exact on:   148480 outputs compared, 0 differ bitwise, 0 non-finite
+multi_exact off:  148480 outputs compared, 63830 differ bitwise (63830 on finite outputs, 63830 at T > 4)
+
+mmvq_multi_parity: ok. With multi_exact on every column is bitwise equal to a single-column call; with it off the control finds differences at T > 4 in every case, so the comparison has power.
+exit 0
+### gr_multi_parity SM70=1: env STRATA_SM70_TABLE=1 build-dev/gr_multi_parity
+gr_multi: 32 cases, 0 failures
+gr_multi_parity OK
+exit 0
+### gr_parity SM70=1: env STRATA_SM70_TABLE=1 build-dev/gr_parity
+  per-stream RMSNorm vs whole-stack        yes  (89.6091% apart, floor 5.000%)
+  /hc inside the silu vs outside           yes  (8.1439% apart, floor 5.000%)
+  SiLU on lo / sigmoid on gate, swapped    yes  (91.4869% apart, floor 5.000%)
+  mean over streams vs sum                 yes  (300.0000% apart, floor 50.000%)
+  BF16 vs FP32 activation contracts        yes  (0.1028% apart, floor 0.010%)
+
+  mixed vs reference                       worst 3.594e-08 (mean |ref| 0.2105)
+  inject vs reference                      rel 2.845e-08
+  FP32 activations vs reference: pass (mixed 7.823e-08, inject 1.138e-07)
+  restoring default activation contract: byte-identical
+  weight orientation is observable         yes (56.9% apart)
+  null w_inject writes nothing             yes
+  zero injection -> plain residual add     yes (worst rel 5.948e-08)
+  1*sigmoid vs 2*sigmoid is observable     yes (readings 50% apart, kernel within 4.36e-07)
+  every stream adds the same block output  yes (worst rel 1.033e-07)
+
+  real dims 2560/4/320 BF16 pass (mixed 7.056e-08, inject 1.986e-07)
+
+  real dims 2560/4/320 FP32 pass (mixed 1.620e-07, inject 2.817e-07)
+
+  real dims 2560/4/320 native pinned GR pass (mixed 1.669e-07, inject 1.359e-07)
+  fused GR read + q8_1 (STRATA_QFUSE), T 1..8, direct and graph replays: pass
+  fused GR multi max-T=8 LDS launch and changing graph replay pass
+  scalar gamma 1.00000000 BF16 activation/capture pass (mixed 0.614394009, ref 0.614394009)
+  scalar final mixer BF16 pass
+  scalar gamma 1.00000000 FP32 activation/capture pass (mixed 0.614636600, ref 0.614636600)
+  scalar final mixer FP32 pass
+  scalar gamma 1.00000000 native pinned GR activation/capture pass (mixed 0.614636600, ref 0.614636600)
+  scalar final mixer native pinned GR pass
+  scalar gamma 1.00390625 BF16 activation/capture pass (mixed 0.616793990, ref 0.616793990)
+  scalar final mixer BF16 pass
+  scalar gamma 1.00390625 FP32 activation/capture pass (mixed 0.617553174, ref 0.617553174)
+  scalar final mixer FP32 pass
+  scalar gamma 1.00390625 native pinned GR activation/capture pass (mixed 0.617553174, ref 0.617553174)
+  scalar final mixer native pinned GR pass
+
+gr_read/gr_write: 0 failures
+exit 0
+### fused_gr_bench SM70=1: env STRATA_SM70_TABLE=1 build-dev/fused_gr_bench 300 1 4
+T 1 apply 0 inject 0 | old   48.9 us  fast   45.2 us | bitwise equal
+T 1 apply 0 inject 1 | old   48.9 us  fast   45.2 us | bitwise equal
+T 1 apply 1 inject 0 | old   50.6 us  fast   46.5 us | bitwise equal
+T 1 apply 1 inject 1 | old   50.7 us  fast   46.5 us | bitwise equal
+T 2 apply 0 inject 0 | old   56.4 us  fast   51.7 us | bitwise equal
+T 2 apply 0 inject 1 | old   56.4 us  fast   51.6 us | bitwise equal
+T 2 apply 1 inject 0 | old   59.0 us  fast   53.3 us | bitwise equal
+T 2 apply 1 inject 1 | old   59.0 us  fast   53.2 us | bitwise equal
+T 3 apply 0 inject 0 | old   62.2 us  fast   58.1 us | bitwise equal
+T 3 apply 0 inject 1 | old   62.2 us  fast   58.1 us | bitwise equal
+T 3 apply 1 inject 0 | old   65.0 us  fast   60.0 us | bitwise equal
+T 3 apply 1 inject 1 | old   65.0 us  fast   59.9 us | bitwise equal
+T 4 apply 0 inject 0 | old   69.0 us  fast   64.8 us | bitwise equal
+T 4 apply 0 inject 1 | old   69.0 us  fast   64.8 us | bitwise equal
+T 4 apply 1 inject 0 | old   72.0 us  fast   66.7 us | bitwise equal
+T 4 apply 1 inject 1 | old   72.0 us  fast   66.7 us | bitwise equal
+fused_gr_bench: 0 differing
+exit 0
+### fused_gr_bench staged SM70=1: env STRATA_SM70_TABLE=1 STRATA_HC_SPLIT=2 build-dev/fused_gr_bench 300 1 4
+T 1 apply 0 inject 0 | old   33.5 us  fast   32.1 us | bitwise equal
+T 1 apply 0 inject 1 | old   33.5 us  fast   32.2 us | bitwise equal
+T 1 apply 1 inject 0 | old   34.6 us  fast   33.1 us | bitwise equal
+T 1 apply 1 inject 1 | old   34.7 us  fast   33.2 us | bitwise equal
+T 2 apply 0 inject 0 | old   39.4 us  fast   36.7 us | bitwise equal
+T 2 apply 0 inject 1 | old   39.4 us  fast   36.7 us | bitwise equal
+T 2 apply 1 inject 0 | old   41.1 us  fast   37.9 us | bitwise equal
+T 2 apply 1 inject 1 | old   41.1 us  fast   37.9 us | bitwise equal
+T 3 apply 0 inject 0 | old   42.5 us  fast   40.4 us | bitwise equal
+T 3 apply 0 inject 1 | old   42.5 us  fast   40.3 us | bitwise equal
+T 3 apply 1 inject 0 | old   44.1 us  fast   41.8 us | bitwise equal
+T 3 apply 1 inject 1 | old   44.1 us  fast   41.8 us | bitwise equal
+T 4 apply 0 inject 0 | old   48.8 us  fast   46.8 us | bitwise equal
+T 4 apply 0 inject 1 | old   48.8 us  fast   46.8 us | bitwise equal
+T 4 apply 1 inject 0 | old   50.6 us  fast   48.1 us | bitwise equal
+T 4 apply 1 inject 1 | old   50.6 us  fast   48.0 us | bitwise equal
+fused_gr_bench: 0 differing
+exit 0
