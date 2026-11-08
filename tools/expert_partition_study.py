@@ -276,6 +276,76 @@ def token_moves(labels, per_file):
     return total_moves, total_tokens
 
 
+def token_matrix(per_file):
+    """(T, 48, k) expert ids: one row a token, its 48 layers. Every trace writes one record per layer per position,
+    in the same order, so position p of layer L is token p."""
+    rows = []
+    for _, layers in per_file:
+        n = min(len(v) for v in layers.values())
+        m = np.zeros((n, N_LAYER, next(iter(layers.values())).shape[1]), dtype=np.int16)
+        for l, ids in layers.items():
+            m[:, l, :] = ids[:n]
+        rows.append(m)
+    return np.concatenate(rows)
+
+
+def jump_cost(labels, tok, blobs, row_bytes):
+    """Jumps when the token continues where its work is: the card holding most of its experts, per layer, and a jump
+    each time that card changes. Plus the CPU lookups. Returns (jump_bytes, cpu_bytes, jumps)."""
+    T = tok.shape[0]
+    cur = np.full(T, -1, dtype=np.int8)
+    jumps, cpu = 0, 0
+    for l in range(N_LAYER):
+        lab = labels[l][tok[:, l, :]]
+        c0 = (lab == 0).sum(1)
+        c1 = (lab == 1).sum(1)
+        cu = (lab == 2).sum(1)
+        cpu += int((cu * int(blobs[l])).sum())
+        m = np.where(c0 > c1, 0, np.where(c1 > c0, 1, -1)).astype(np.int8)
+        valid = m >= 0
+        nxt = np.where(valid, m, cur)
+        jumps += int((valid & (cur >= 0) & (nxt != cur)).sum())
+        cur = nxt
+    return jumps * row_bytes, cpu, jumps
+
+
+def optimize_jumps(labels, tok, blobs, caps, row_bytes, top=1500, sweeps=2):
+    """Move one expert at a time, hottest first, while jumps + CPU traffic fall and the cards fit."""
+    labels = labels.copy()
+    used = used_bytes(labels, blobs)
+    free = [caps[0] - used[0], caps[1] - used[1]]
+    freq_all = np.zeros((N_LAYER, N_EXPERT), dtype=np.int64)
+    for l in range(N_LAYER):
+        flat = tok[:, l, :].ravel()
+        freq_all[l] = np.bincount(flat, minlength=N_EXPERT)
+    order = sorted(((int(freq_all[l][e]), l, e) for l in range(N_LAYER) for e in range(N_EXPERT)),
+                   key=lambda x: -x[0])[:top]
+    best = jump_cost(labels, tok, blobs, row_bytes)
+    for sweep in range(sweeps):
+        moved = 0
+        for _, l, e in order:
+            src = int(labels[l][e])
+            for dst in (0, 1, 2):
+                if dst == src or (dst != 2 and free[dst] < blobs[l]):
+                    continue
+                labels[l][e] = dst
+                cand = jump_cost(labels, tok, blobs, row_bytes)
+                if cand[0] + cand[1] < best[0] + best[1] - 1:
+                    if src != 2:
+                        free[src] += int(blobs[l])
+                    if dst != 2:
+                        free[dst] -= int(blobs[l])
+                    best = cand
+                    src = dst
+                    moved += 1
+            labels[l][e] = src
+        print(f"    sweep {sweep}: jumps {best[2]}, jump {best[0] / 1e6:.1f} MB, CPU {best[1] / 1e6:.1f} MB, "
+              f"moved {moved}", file=sys.stderr)
+        if moved == 0:
+            break
+    return labels, best
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("tracedir")
@@ -293,6 +363,10 @@ def main():
     ap.add_argument("--home", choices=("roam", "0", "1"), default="roam",
                     help="roam: each layer is computed on the card that holds most of its experts (the residual may "
                          "change card between layers); 0/1: one home card, the other only computes its experts' rows")
+    ap.add_argument("--optimize-jumps", action="store_true",
+                    help="search a free expert distribution (both cards hold every layer) for the fewest jumps "
+                         "a token makes, against the CPU traffic; starts from the frequency fill")
+    ap.add_argument("--top", type=int, default=1500, help="experts per sweep the jump search tries")
     ap.add_argument("--out", default="")
     a = ap.parse_args()
 
@@ -504,6 +578,19 @@ def main():
             nm = dom_names[d] if 0 <= d < len(dom_names) else "?"
             print(f"  {name} / {nm}: {e['jumps']}/{e['events']} events jump "
                   f"({100 * e['jumps'] / max(e['events'], 1):.1f}%), CPU {e['cpu'] / 1e6:.1f} MB")
+
+    if a.optimize_jumps:
+        tok = token_matrix(per_file)
+        row_bytes = (5 * N_EMBD + 4) * dtype_bytes
+        start = greedy_fill(events, blobs, caps, 0)
+        j0 = jump_cost(start, tok, blobs, row_bytes)
+        print("")
+        print(f"jump search from the frequency fill: {j0[2]} jumps ({j0[2] / len(tok):.2f} a token), "
+              f"{j0[0] / 1e6:.1f} MB, CPU {j0[1] / 1e6:.1f} MB")
+        opt, jb = optimize_jumps(start, tok, blobs, caps, row_bytes, top=a.top)
+        u = used_bytes(opt, blobs)
+        print(f"after the search: {jb[2]} jumps ({jb[2] / len(tok):.2f} a token), {jb[0] / 1e6:.1f} MB, "
+              f"CPU {jb[1] / 1e6:.1f} MB, cards {u[0] / 2**30:.2f} + {u[1] / 2**30:.2f} GiB")
 
     print("")
     print("with no home - the token continues on the card it jumps to:")
