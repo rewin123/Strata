@@ -79,23 +79,28 @@ def events_of(per_file):
             {l: np.concatenate(v) for l, v in which.items()})
 
 
-def layer_cost(ids, lab, blob, k, jump_unit, cpu_unit, per_expert=False):
+def layer_cost(ids, lab, blob, k, jump_unit, cpu_unit, per_expert=False, home=None):
     L = lab[ids]
     c0 = (L == 0).sum(1)
     c1 = (L == 1).sum(1)
     cu = (L == 2).sum(1)
-    remote = (k - cu) - np.maximum(c0, c1)
+    if home is not None:
+        # one home card for the residual: the token never changes card between layers, so every event that needs an
+        # expert of the OTHER card pays one round trip (the activation row out and the result back)
+        remote = c1 if home == 0 else c0
+    else:
+        remote = (k - cu) - np.maximum(c0, c1)
     jumps = remote > 0
     jump = int(jumps.sum()) * jump_unit * (int(remote[jumps].sum()) if per_expert else 1)
     cpu = int((cu * (blob + cpu_unit)).sum())
     return jump, cpu, int(jumps.sum()), int(cu.sum())
 
 
-def totals(labels, events, blobs, k, jump_unit, cpu_unit, per_expert=False, domains=None):
+def totals(labels, events, blobs, k, jump_unit, cpu_unit, per_expert=False, domains=None, home=None):
     out = {"jump": 0, "cpu": 0, "jumps": 0, "cpu_lookups": 0, "events": 0}
     per_dom = {}
     for l, ids in events.items():
-        j, c, nj, nc = layer_cost(ids, labels[l], int(blobs[l]), k, jump_unit, cpu_unit, per_expert)
+        j, c, nj, nc = layer_cost(ids, labels[l], int(blobs[l]), k, jump_unit, cpu_unit, per_expert, home)
         out["jump"] += j
         out["cpu"] += c
         out["jumps"] += nj
@@ -105,7 +110,7 @@ def totals(labels, events, blobs, k, jump_unit, cpu_unit, per_expert=False, doma
             d = domains[l]
             for name in np.unique(d):
                 m = d == name
-                jj, cc, njj, _ = layer_cost(ids[m], labels[l], int(blobs[l]), k, jump_unit, cpu_unit, per_expert)
+                jj, cc, njj, _ = layer_cost(ids[m], labels[l], int(blobs[l]), k, jump_unit, cpu_unit, per_expert, home)
                 e = per_dom.setdefault(int(name), {"jump": 0, "cpu": 0, "jumps": 0, "events": 0})
                 e["jump"] += jj
                 e["cpu"] += cc
@@ -201,6 +206,53 @@ def layer_split_curve(ids, freq, n_on, k, jump_unit, grid=9):
     return ns, J, on, Csub, rel
 
 
+def greedy_fill(events, blobs, caps, home):
+    """The hottest pairs first: the home card until it is full, then the other card, the CPU for the rest."""
+    freq = freq_rank(events)
+    labels = np.full((N_LAYER, N_EXPERT), 2, dtype=np.int8)
+    pairs = sorted(((int(freq[l][e]), l, e) for l in range(N_LAYER) for e in range(N_EXPERT)), key=lambda x: -x[0])
+    free = list(caps)
+    for _, l, e in pairs:
+        for card in (home, 1 - home):
+            if free[card] >= blobs[l]:
+                labels[l][e] = card
+                free[card] -= int(blobs[l])
+                break
+    return labels
+
+
+def local_search(labels, events, blobs, caps, k, jump_unit, cpu_unit, per_expert, home, sweeps=4):
+    """One (layer, expert) at a time, hottest first, while the whole-trajectory cost falls and the cards fit."""
+    labels = labels.copy()
+    used = used_bytes(labels, blobs)
+    free = [caps[0] - used[0], caps[1] - used[1]]
+    cur = {l: layer_cost(events[l], labels[l], int(blobs[l]), k, jump_unit, cpu_unit, per_expert, home)
+           for l in range(N_LAYER)}
+    for _ in range(sweeps):
+        moved = 0
+        for l in range(N_LAYER):
+            ids, blob = events[l], int(blobs[l])
+            for e in np.argsort(-np.bincount(ids.ravel(), minlength=N_EXPERT), kind="stable"):
+                src, base = int(labels[l][e]), cur[l]
+                for dst in (0, 1, 2):
+                    if dst == src or (dst != 2 and free[dst] < blob):
+                        continue
+                    labels[l][e] = dst
+                    cand = layer_cost(ids, labels[l], blob, k, jump_unit, cpu_unit, per_expert, home)
+                    if cand[0] + cand[1] < base[0] + base[1]:
+                        if src != 2:
+                            free[src] += blob
+                        if dst != 2:
+                            free[dst] -= blob
+                        cur[l] = base = cand
+                        src = dst
+                        moved += 1
+                labels[l][e] = src
+        if moved == 0:
+            break
+    return labels
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("tracedir")
@@ -215,6 +267,9 @@ def main():
     ap.add_argument("--contiguous", action="store_true",
                     help="only contiguous layer ranges per card (what a layer split is), one hand-off per window, "
                          "instead of a free assignment that may alternate the cards layer by layer")
+    ap.add_argument("--home", choices=("roam", "0", "1"), default="roam",
+                    help="roam: each layer is computed on the card that holds most of its experts (the residual may "
+                         "change card between layers); 0/1: one home card, the other only computes its experts' rows")
     ap.add_argument("--out", default="")
     a = ap.parse_args()
 
@@ -389,6 +444,18 @@ def main():
         switches = sum(1 for i in range(1, N_LAYER) if own[i] != own[i - 1]) + 1
         print(f"  the free assignment changes card {switches} times a pass: "
               f"{switches * handoff_tokens * n_tokens / 1e6:.1f} MB of hand-offs, {switches} synchronisations a token")
+
+    if a.home != "roam":
+        home = int(a.home)
+        labels_home = local_search(greedy_fill(events, blobs, caps, home), events, blobs, caps, k, jump_unit,
+                                   cpu_unit, a.jump_per_expert, home, sweeps=4)
+        t, per_dom = totals(labels_home, events, blobs, k, jump_unit, cpu_unit, a.jump_per_expert, domains, home)
+        u = used_bytes(labels_home, blobs)
+        share = (t["events"] - t["jumps"]) / t["events"] * 100
+        print("")
+        print(f"home card {home}, the other card computes its experts' rows: jump {t['jump'] / 1e6:.1f} MB over "
+              f"{t['jumps']} of {t['events']} events ({share:.1f}% stay on the home card), CPU {t['cpu'] / 1e6:.1f} MB, "
+              f"cards {u[0] / 2**30:.2f} + {u[1] / 2**30:.2f} GiB")
 
     rows = {}
     print("")
