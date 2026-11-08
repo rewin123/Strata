@@ -253,6 +253,29 @@ def local_search(labels, events, blobs, caps, k, jump_unit, cpu_unit, per_expert
     return labels
 
 
+def token_moves(labels, per_file):
+    """The token follows its work: at each layer it computes on the card holding most of its experts, and a jump is a
+    change of that card. Returns (moves, tokens) - the residual rows one card has to send to the other."""
+    total_moves, total_tokens = 0, 0
+    for _, layers in per_file:
+        n = min(len(v) for v in layers.values())
+        cur = np.full(n, -1)
+        for l in range(N_LAYER):
+            ids = layers.get(l)
+            if ids is None:
+                continue
+            lab = labels[l][ids[:n]]
+            c0 = (lab == 0).sum(1)
+            c1 = (lab == 1).sum(1)
+            m = np.where(c0 > c1, 0, np.where(c1 > c0, 1, -1))
+            valid = m >= 0
+            nxt = np.where(valid, m, cur)
+            total_moves += int((valid & (cur >= 0) & (nxt != cur)).sum())
+            cur = nxt
+        total_tokens += n
+    return total_moves, total_tokens
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("tracedir")
@@ -442,6 +465,8 @@ def main():
             c1 = int((labels_opt[l] == 1).sum())
             own.append(0 if c0 > c1 else 1)
         switches = sum(1 for i in range(1, N_LAYER) if own[i] != own[i - 1]) + 1
+        mv, nt = token_moves(labels, per_file)
+        print(f"  contiguous, no home: {mv / max(nt, 1):.2f} jumps a token, {mv * handoff_tokens / 1e6:.1f} MB")
         print(f"  the free assignment changes card {switches} times a pass: "
               f"{switches * handoff_tokens * n_tokens / 1e6:.1f} MB of hand-offs, {switches} synchronisations a token")
 
@@ -479,6 +504,13 @@ def main():
             nm = dom_names[d] if 0 <= d < len(dom_names) else "?"
             print(f"  {name} / {nm}: {e['jumps']}/{e['events']} events jump "
                   f"({100 * e['jumps'] / max(e['events'], 1):.1f}%), CPU {e['cpu'] / 1e6:.1f} MB")
+
+    print("")
+    print("with no home - the token continues on the card it jumps to:")
+    row = (5 * N_EMBD + 4) * dtype_bytes
+    for name, labels in (("rank", labels_rank), ("co-act", labels_opt), ("layer", labels_layer)):
+        mv, nt = token_moves(labels, per_file)
+        print(f"  {name}: {mv / max(nt, 1):.2f} jumps a token, {mv / 1e6:.0f}k rows, {mv * row / 1e6:.1f} MB")
 
     if a.out:
         np.savez_compressed(a.out, blobs=blobs, rank=labels_rank, coact=labels_opt, layer=labels_layer)
