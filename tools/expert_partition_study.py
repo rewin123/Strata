@@ -212,6 +212,9 @@ def main():
     ap.add_argument("--on-card", choices=("quota", "global"), default="quota",
                     help="quota: every layer keeps the same share of the cards (the engine's per-layer quota); "
                          "global: the hottest pairs overall, however they fall across layers")
+    ap.add_argument("--contiguous", action="store_true",
+                    help="only contiguous layer ranges per card (what a layer split is), one hand-off per window, "
+                         "instead of a free assignment that may alternate the cards layer by layer")
     ap.add_argument("--out", default="")
     a = ap.parse_args()
 
@@ -346,6 +349,46 @@ def main():
             quota = max(0, min(N_EXPERT, quota))
             top = np.argsort(-freq[l], kind="stable")[:quota]
             labels_layer[l][top] = card
+
+    # ---- the same question under the real constraint: card 0 runs layers 0..K-1, card 1 runs K..47. Then a token
+    # crosses cards once per pass, not once per layer - the hand-off the free assignment above charges nothing for.
+    handoff_tokens = (5 * N_EMBD + 4) * dtype_bytes      # handoff_floats = hc*n_embd + n_embd + hc, hc = 4 -> 5 rows
+    n_tokens = total_events // N_LAYER
+    if a.contiguous:
+        best = None
+        for K in range(1, N_LAYER):
+            labels = np.full((N_LAYER, N_EXPERT), 2, dtype=np.int8)
+            ok = True
+            for card, lo, hi in ((0, 0, K), (1, K, N_LAYER)):
+                budget = cap
+                pairs = sorted(((int(freq[l][e]), l, e) for l in range(lo, hi) for e in range(N_EXPERT)),
+                               key=lambda x: -x[0])
+                for _, l, e in pairs:
+                    if budget < blobs[l]:
+                        break
+                    budget -= int(blobs[l])
+                    labels[l][e] = card
+            t, _ = totals(labels, events, blobs, k, jump_unit, cpu_unit, a.jump_per_expert)
+            u = used_bytes(labels, blobs)
+            if max(u) > cap:
+                ok = False
+            score = t["cpu"] + handoff_tokens * n_tokens          # one hand-off per window
+            if ok and (best is None or score < best[0]):
+                best = (score, K, t, u)
+        score, K, t, u = best
+        share = (t["events"] - t["jumps"]) / t["events"] * 100
+        print("")
+        print(f"contiguous (layers 0..{K - 1} on card 0, {K}..{N_LAYER - 1} on card 1): jump {t['jump'] / 1e6:.1f} MB, "
+              f"CPU {t['cpu'] / 1e6:.1f} MB, one hand-off {handoff_tokens * n_tokens / 1e6:.1f} MB, "
+              f"cards {u[0] / 2**30:.2f} + {u[1] / 2**30:.2f} GiB, one-card share {share:.1f}%")
+        own = []
+        for l in range(N_LAYER):
+            c0 = int((labels_opt[l] == 0).sum())
+            c1 = int((labels_opt[l] == 1).sum())
+            own.append(0 if c0 > c1 else 1)
+        switches = sum(1 for i in range(1, N_LAYER) if own[i] != own[i - 1]) + 1
+        print(f"  the free assignment changes card {switches} times a pass: "
+              f"{switches * handoff_tokens * n_tokens / 1e6:.1f} MB of hand-offs, {switches} synchronisations a token")
 
     rows = {}
     print("")
