@@ -276,6 +276,63 @@ def token_moves(labels, per_file):
     return total_moves, total_tokens
 
 
+def fill_with_dupes(events, blobs, caps, ndup):
+    """The `ndup` hottest pairs go on BOTH cards (label 3), then the next hottest fill card 0, then card 1, the CPU
+    takes the rest. Duplication spends a card's room on purpose: a hot expert on both cards is one no token ever
+    fetches or moves for."""
+    freq = freq_rank(events)
+    pairs = sorted(((int(freq[l][e]), l, e) for l in range(N_LAYER) for e in range(N_EXPERT)), key=lambda x: -x[0])
+    labels = np.full((N_LAYER, N_EXPERT), 2, dtype=np.int8)
+    free = list(caps)
+    placed = 0
+    for _, l, e in pairs:
+        if placed >= ndup:
+            break
+        if free[0] >= blobs[l] and free[1] >= blobs[l]:
+            labels[l][e] = 3
+            free[0] -= int(blobs[l])
+            free[1] -= int(blobs[l])
+            placed += 1
+    for card in (0, 1):
+        for _, l, e in pairs:
+            if labels[l][e] != 2:
+                continue
+            if free[card] >= blobs[l]:
+                labels[l][e] = card
+                free[card] -= int(blobs[l])
+    return labels
+
+
+def path_cost(labels, tok, blobs, row):
+    """The token chooses, layer by layer: stay and fetch the experts only the other card has (one row each), or jump
+    (one row) and continue there. A dynamic program over the two cards, per token. An expert on BOTH cards is never
+    fetched - that is what duplication buys. Returns (bytes, jumps, cpu_bytes)."""
+    T = tok.shape[0]
+    dp0 = np.zeros(T, dtype=np.float64)
+    dp1 = np.zeros(T, dtype=np.float64)
+    mv0 = np.zeros((N_LAYER, T), dtype=bool)
+    mv1 = np.zeros((N_LAYER, T), dtype=bool)
+    cpu = 0
+    for l in range(N_LAYER):
+        lab = labels[l][tok[:, l, :]]
+        r0 = (lab == 1).sum(1)          # experts only on card 1: fetched if the token stays on card 0
+        r1 = (lab == 0).sum(1)
+        cu = (lab == 2).sum(1)
+        cpu += int((cu * int(blobs[l])).sum())
+        stay0, stay1 = dp0 + r0 * row, dp1 + r1 * row
+        move0, move1 = dp1 + row + r0 * row, dp0 + row + r1 * row
+        mv0[l] = move0 < stay0
+        mv1[l] = move1 < stay1
+        dp0, dp1 = np.minimum(stay0, move0), np.minimum(stay1, move1)
+    state = (dp0 > dp1).astype(np.int8)
+    jumps = 0
+    for l in range(N_LAYER - 1, -1, -1):
+        jumped = np.where(state == 0, mv0[l], mv1[l])
+        jumps += int(jumped.sum())
+        state = np.where(jumped, 1 - state, state)
+    return float(np.minimum(dp0, dp1).sum()), jumps, cpu
+
+
 def token_matrix(per_file):
     """(T, 48, k) expert ids: one row a token, its 48 layers. Every trace writes one record per layer per position,
     in the same order, so position p of layer L is token p."""
@@ -367,6 +424,11 @@ def main():
                     help="search a free expert distribution (both cards hold every layer) for the fewest jumps "
                          "a token makes, against the CPU traffic; starts from the frequency fill")
     ap.add_argument("--top", type=int, default=1500, help="experts per sweep the jump search tries")
+    ap.add_argument("--path-cost", action="store_true",
+                    help="price a whole token path: stay and fetch the experts the other card has, or jump and "
+                         "continue there (a dynamic program over the two cards)")
+    ap.add_argument("--duplicate-sweep", default="",
+                    help="comma-separated counts of the hottest pairs to put on BOTH cards")
     ap.add_argument("--out", default="")
     a = ap.parse_args()
 
@@ -578,6 +640,29 @@ def main():
             nm = dom_names[d] if 0 <= d < len(dom_names) else "?"
             print(f"  {name} / {nm}: {e['jumps']}/{e['events']} events jump "
                   f"({100 * e['jumps'] / max(e['events'], 1):.1f}%), CPU {e['cpu'] / 1e6:.1f} MB")
+
+    if a.path_cost:
+        tok = token_matrix(per_file)
+        row = (5 * N_EMBD + 4) * dtype_bytes
+        print("")
+        print("a token's path - stay and fetch, or jump and continue:")
+        print("| layout | bytes MB | jumps | CPU MB |")
+        print("| --- | ---: | ---: | ---: |")
+        for name, lab in (("rank", labels_rank), ("co-act", labels_opt), ("layer", labels_layer),
+                          ("hot fill", greedy_fill(events, blobs, caps, 0))):
+            b, jn, cpu = path_cost(lab, tok, blobs, row)
+            print(f"| {name} | {b / 1e6:.1f} | {jn} | {cpu / 1e6:.1f} |")
+
+    if a.duplicate_sweep:
+        tok = token_matrix(per_file)
+        row = (5 * N_EMBD + 4) * dtype_bytes
+        print("")
+        print("| duplicated on both cards | bytes MB | jumps | jumps a token | CPU MB |")
+        print("| ---: | ---: | ---: | ---: | ---: |")
+        for nd in [int(x) for x in a.duplicate_sweep.split(",") if x.strip()]:
+            lab = fill_with_dupes(events, blobs, caps, nd)
+            b, jn, cpu = path_cost(lab, tok, blobs, row)
+            print(f"| {nd} | {b / 1e6:.1f} | {jn} | {jn / len(tok):.2f} | {cpu / 1e6:.1f} |")
 
     if a.optimize_jumps:
         tok = token_matrix(per_file)
